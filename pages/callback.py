@@ -22,6 +22,8 @@ if 'access_token_endTime' not in st.session_state:
     st.session_state['access_token_endTime'] = ''
 if 'refresh_token' not in st.session_state:
     st.session_state['refresh_token'] = ''
+if 'User' not in st.session_state:
+    st.session_state['User'] = ''
 
 # Scopes required for accessing user's currently playing track
 SCOPE = "user-read-playback-state user-read-currently-playing"
@@ -86,6 +88,14 @@ def submitRequest(endpoint, functionName, params):
     
     return None
 
+#Ge user infomrati9on
+def getUserInfo():
+
+    requestsAsJsonUser = submitRequest("https://api.spotify.com/v1/me", "Get Users PlaybackState", {})
+
+    return str(requestsAsJsonUser["display_name"])
+
+
 # Get Information for the Live Player
 def getUserCurrentSongPlaying():
 
@@ -121,7 +131,7 @@ def getHistoricalListening(after, before):
 
     if requestsAsJsonHistory is not None and requestsAsJsonHistory["items"] != []:
         userHistory = json_normalize(requestsAsJsonHistory["items"])
-        userHistory = userHistory[["played_at", "track.duration_ms", "track.id", "track.is_local", "track.name", "track.artists"]]
+        userHistory = userHistory[["played_at", "track.duration_ms", "track.id", "track.is_local", "track.name", "track.artists", "context.uri"]]
         userHistory['artists'] = userHistory['track.artists'].apply(extract_item)
         userHistory.drop("track.artists", axis=1, inplace=True)
         userHistory["played_at"] = pd.to_datetime(userHistory["played_at"])
@@ -161,6 +171,24 @@ def calculateSkipFraction(listeningHistory):
     listeningHistory["SkippedFraction"] = 1 - listeningHistory["ListeningFraction"]
     return listeningHistory
 
+def getUsersPlaylists(username):
+    params = {"limit": 15}
+    requestsAsJsonPlaylists = submitRequest("https://api.spotify.com/v1/me/playlists", "Get Users History", params)
+
+    if len(requestsAsJsonPlaylists["items"]) == 0:
+        st.write("Request Empty - No Playlists")
+        return None
+    
+    elif requestsAsJsonPlaylists["total"] > 50:
+        st.warning("More than 50 playlists")
+        return None
+    
+    else:
+        userPlaylists = (json_normalize(requestsAsJsonPlaylists["items"]))[["uri", "name", "owner.display_name", "owner.id"]]
+        userPlaylists = userPlaylists[(userPlaylists["owner.id"] == username) | (userPlaylists["owner.display_name"] == username)]
+
+    return userPlaylists
+
 st.title("Simmplify")
 
 st.divider()
@@ -170,6 +198,16 @@ player = st.empty()
 st.divider()
 
 login()
+userName = getUserInfo()
+st.session_state["User"] = userName
+
+st.markdown("## User Created Playlists")
+userPlaylists = getUsersPlaylists(userName)
+userPlaylists
+
+st.divider()
+
+st.markdown("## Historical Data (Last 50 songs)")
 historicalData = getAsMuchHistoricalData()
 historicalDataWCalc = calculateSkipFraction(historicalData)
 historicalDataWCalc
@@ -194,6 +232,7 @@ def callback_page():
             c2.markdown(f'Album: {getUserCurrentSongPlayingDict["AlbumName"]}')
             c3.image(getUserCurrentSongPlayingDict["AlbumArtHMTL"], width=150)
             c2.progress(float(getUserCurrentSongPlayingDict["SongCurrentPosition"]) / float(getUserCurrentSongPlayingDict["SongLength"]))
+            c4.markdown(f"Welcome: {st.session_state["User"]}")
 
         time.sleep(1)
 

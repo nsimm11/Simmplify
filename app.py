@@ -10,7 +10,7 @@ CLIENT_SECRET = credentials.CLIENT_SECRET
 REDIRECT_URI = credentials.REDIRECT_URI
 
 # Scopes required for accessing user's currently playing track
-SCOPE = "user-read-playback-state user-read-currently-playing user-read-recently-played"
+SCOPE = "user-read-playback-state user-read-currently-playing user-read-recently-played playlist-read-private"
 
 sp_oauth = SpotifyOAuth(client_id=CLIENT_ID, 
                         client_secret=CLIENT_SECRET,
