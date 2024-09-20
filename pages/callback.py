@@ -52,7 +52,7 @@ def login():
             
             else:
                 access_token = st.session_state['access_token']
-                st.toast("Using Old Access Token")
+                st.toast("Using Cached Access Token")
             
             return access_token
         
@@ -70,24 +70,29 @@ def submitRequest(endpoint, headers, functionName):
         current_response = response.json()
     
     if current_response is not None:
-        return current_response["item"]
+        return current_response
     
     return None
 
 def getUserCurrentSongPlaying(access_token):
     # Define the endpoint for currently playing track
-    endpoint = "https://api.spotify.com/v1/me/player/currently-playing"
     headers = {
     "Authorization": f"Bearer {access_token}"}   
 
-    requestsAsJson = submitRequest(endpoint, headers, "Get Users Current Playing Song")
+    requestsAsJsonPlayer = submitRequest("https://api.spotify.com/v1/me/player", headers, "Get Users PlaybackState")
+    requestsAsJsonSong = requestsAsJsonPlayer["item"]
 
-    if requestsAsJson is not None:
-        requestsAsDict = {}
-        requestsAsDict["SongName"] = requestsAsJson["name"]
-        requestsAsDict["ArtistsName"] = requestsAsJson["artists"][0]["name"]
-        requestsAsDict["AlbumName"] = requestsAsJson["album"]["name"]
-        requestsAsDict["AlbumArtHMTL"] = requestsAsJson['album']['images'][0]['url']
+    requestsAsDict = {}
+
+    if requestsAsJsonSong is not None:
+        requestsAsDict["SongName"] = requestsAsJsonSong["name"]
+        requestsAsDict["ArtistsName"] = requestsAsJsonSong["artists"][0]["name"]
+        requestsAsDict["AlbumName"] = requestsAsJsonSong["album"]["name"]
+        requestsAsDict["AlbumArtHMTL"] = requestsAsJsonSong['album']['images'][0]['url']
+        requestsAsDict["SongLength"] = requestsAsJsonSong['duration_ms']
+    
+    if requestsAsJsonPlayer is not None:
+        requestsAsDict["SongCurrentPosition"] = requestsAsJsonPlayer['progress_ms']
 
     return requestsAsDict
 
@@ -98,17 +103,23 @@ player = st.empty()
 # Streamlit app - callback page
 def callback_page():
 
+    startTime = datetime.datetime.now()
+
     while True:
-        access_token = login()
-        getUserCurrentSongPlayingDict = getUserCurrentSongPlaying(access_token)
+        if (startTime - datetime.datetime.now()).total_seconds() % 10 < 1:
+            access_token = login()
+            getUserCurrentSongPlayingDict = getUserCurrentSongPlaying(access_token)
+
+        else: getUserCurrentSongPlayingDict["SongCurrentPosition"] = min(float(getUserCurrentSongPlayingDict["SongLength"]), float(getUserCurrentSongPlayingDict["SongCurrentPosition"]) + 1000)
 
         with player.container():
             st.markdown(f'SONG: {getUserCurrentSongPlayingDict["SongName"]}')
             st.markdown(f'Artists: {getUserCurrentSongPlayingDict["ArtistsName"]}')
             st.markdown(f'Album: {getUserCurrentSongPlayingDict["AlbumName"]}')
+            st.progress(float(getUserCurrentSongPlayingDict["SongCurrentPosition"]) / float(getUserCurrentSongPlayingDict["SongLength"]))
             st.image(getUserCurrentSongPlayingDict["AlbumArtHMTL"])
 
-        time.sleep(10)
+        time.sleep(1)
 
 
 
