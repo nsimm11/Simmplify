@@ -128,10 +128,38 @@ def getHistoricalListening(after, before):
         beforeStamp = requestsAsJsonHistory["cursors"]["before"]
         return userHistory, beforeStamp
 
+    elif requestsAsJsonHistory["items"] == []:
+        print("No more data")
+        return (None, None)
+
     else:
         st.write("Issue with History Request")
         return (None, None)
     
+def getAsMuchHistoricalData():
+
+    historicalData, beforeStamp = getHistoricalListening(None, None)
+
+    while (1):
+        newHL, beforeStamp = getHistoricalListening(None, beforeStamp)
+        if newHL is not None:
+            historicalData = pd.concat([historicalData, newHL])
+        else:
+            break
+
+    historicalData = historicalData.drop_duplicates(subset="track.id")
+    historicalData.reset_index(inplace=True, drop=True)
+
+    return historicalData
+
+def calculateSkipFraction(listeningHistory):
+    lH = list((listeningHistory["played_at"].diff().dt.total_seconds()*1000*-1).dropna())
+    lH.append(None)
+    listeningHistory["played_for"] = lH
+    listeningHistory.dropna(axis=0, inplace=True)
+    listeningHistory["ListeningFraction"] = (1 - (listeningHistory["track.duration_ms"] - listeningHistory["played_for"]) / listeningHistory["track.duration_ms"]).clip(upper=1)
+    listeningHistory["SkippedFraction"] = 1 - listeningHistory["ListeningFraction"]
+    return listeningHistory
 
 st.title("Simmplify")
 
@@ -142,23 +170,9 @@ player = st.empty()
 st.divider()
 
 login()
-st.markdown("## Historical Listening")
-historicalData, beforeStamp = getHistoricalListening(None, None)
-
-for i in range(10):
-    print(i)
-    newHL, beforeStamp = getHistoricalListening(None, beforeStamp)
-    if newHL is not None:
-        historicalData = pd.concat([historicalData, newHL])
-    else:
-        break
-
-historicalData = historicalData.drop_duplicates(subset="track.id")
-historicalData.reset_index(inplace=True)
-
-st.dataframe(historicalData)
-
-
+historicalData = getAsMuchHistoricalData()
+historicalDataWCalc = calculateSkipFraction(historicalData)
+historicalDataWCalc
 
 # Streamlit app - callback page
 def callback_page():
