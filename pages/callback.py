@@ -8,6 +8,7 @@ import datetime
 import pandas as pd
 from pandas import json_normalize
 import time
+import pyodbc
 
 import credentials
 
@@ -25,6 +26,23 @@ if 'refresh_token' not in st.session_state:
 if 'User' not in st.session_state:
     st.session_state['User'] = ''
 
+#connection string 
+conn = pyodbc.connect('Driver={ODBC Driver 18 for SQL Server};'
+                      'Server=CAM-SVN-LAB1\SQLEXPRESS;'
+                      'Database=LabDataManagement;'
+                      'TrustServerCertificate=yes;'
+                      'UID=LabDatabaseManager;PWD=WeAreN0tTestingHT')
+
+cursor = conn.cursor()
+
+st.markdown("# Dashboard")
+
+#General Query funciton, returns a dataframe. Use this instead of pd.read_sql
+def getQuery(query):
+    cursor.execute(query)
+    Data = pd.DataFrame.from_records(cursor.fetchall(), columns=[col[0] for col in cursor.description])
+    return Data
+
 # Scopes required for accessing user's currently playing track
 SCOPE = "user-read-playback-state user-read-currently-playing"
 
@@ -32,6 +50,11 @@ sp_oauth = SpotifyOAuth(client_id=credentials.CLIENT_ID,
                         client_secret=credentials.CLIENT_SECRET,
                         redirect_uri=credentials.REDIRECT_URI,
                         scope=SCOPE)
+
+def errorLog(errorMessage):
+    f = open("error.txt", "a")
+    f.write(f"{datetime.datetime.now()} - {errorMessage} \n")
+    f.close()
 
 def login():
     query_params = st.query_params  # Updated from experimental_get_query_params()
@@ -80,7 +103,8 @@ def submitRequest(endpoint, functionName, params):
     if response.status_code == 200:
         current_response = response.json()
     else:
-        st.write(f"error, {functionName}, {response.status_code}")
+        errorLog(f"error, {functionName}, {response.status_code}")
+        print(f"error: {functionName}, {response.status_code}")
         current_response = None
     
     if current_response is not None:
@@ -100,19 +124,23 @@ def getUserInfo():
 def getUserCurrentSongPlaying():
 
     requestsAsJsonPlayer = submitRequest("https://api.spotify.com/v1/me/player", "Get Users PlaybackState", {})
-    requestsAsJsonSong = requestsAsJsonPlayer["item"]
 
     requestsAsDict = {}
 
-    if requestsAsJsonSong is not None:
+    if requestsAsJsonPlayer is not None:
+        requestsAsDict["SongCurrentPosition"] = requestsAsJsonPlayer['progress_ms']
+        requestsAsJsonSong = requestsAsJsonPlayer["item"]
+    else:
+        requestsAsJsonSong = None
+
+    if  requestsAsJsonSong is not None:
         requestsAsDict["SongName"] = requestsAsJsonSong["name"]
         requestsAsDict["ArtistsName"] = requestsAsJsonSong["artists"][0]["name"]
         requestsAsDict["AlbumName"] = requestsAsJsonSong["album"]["name"]
         requestsAsDict["AlbumArtHMTL"] = requestsAsJsonSong['album']['images'][0]['url']
         requestsAsDict["SongLength"] = requestsAsJsonSong['duration_ms']
     
-    if requestsAsJsonPlayer is not None:
-        requestsAsDict["SongCurrentPosition"] = requestsAsJsonPlayer['progress_ms']
+    else: return {"SongName": "Not Playing", "ArtistsName": "", "AlbumName": "", "AlbumArtHMTL": "", "SongCurrentPosition": 69, "SongLength":100 }
 
     return requestsAsDict
 
@@ -143,7 +171,9 @@ def getHistoricalListening(after, before):
         return (None, None)
 
     else:
-        st.write("Issue with History Request")
+        print("Issue with History Request")
+        errorLog("Issue with History Request")
+
         return (None, None)
     
 def getAsMuchHistoricalData():
@@ -176,7 +206,9 @@ def getUsersPlaylists(username):
     requestsAsJsonPlaylists = submitRequest("https://api.spotify.com/v1/me/playlists", "Get Users History", params)
 
     if len(requestsAsJsonPlaylists["items"]) == 0:
-        st.write("Request Empty - No Playlists")
+        print("Request Empty - No Playlists")
+        errorLog("Request Empty - No Playlists")
+
         return None
     
     elif requestsAsJsonPlaylists["total"] > 50:
@@ -230,7 +262,7 @@ def callback_page():
             c2.markdown(f'SONG: {getUserCurrentSongPlayingDict["SongName"]}')
             c2.markdown(f'Artists: {getUserCurrentSongPlayingDict["ArtistsName"]}')
             c2.markdown(f'Album: {getUserCurrentSongPlayingDict["AlbumName"]}')
-            c3.image(getUserCurrentSongPlayingDict["AlbumArtHMTL"], width=150)
+            if getUserCurrentSongPlayingDict["AlbumArtHMTL"] != "": c3.image(getUserCurrentSongPlayingDict["AlbumArtHMTL"], width=150)
             c2.progress(float(getUserCurrentSongPlayingDict["SongCurrentPosition"]) / float(getUserCurrentSongPlayingDict["SongLength"]))
             c4.markdown(f"Welcome: {st.session_state["User"]}")
 
