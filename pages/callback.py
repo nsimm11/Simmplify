@@ -12,36 +12,23 @@ import pyodbc
 
 import credentials
 
-st.set_page_config(layout="wide")
-
 # Use certifi's certificate bundle
 os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
 
+#Setup session State
 if 'access_token' not in st.session_state:
     st.session_state['access_token'] = ''
 if 'access_token_endTime' not in st.session_state:
     st.session_state['access_token_endTime'] = ''
 if 'refresh_token' not in st.session_state:
     st.session_state['refresh_token'] = ''
-if 'User' not in st.session_state:
-    st.session_state['User'] = ''
-
-#connection string 
-conn = pyodbc.connect('Driver={ODBC Driver 18 for SQL Server};'
-                      'Server=CAM-SVN-LAB1\SQLEXPRESS;'
-                      'Database=LabDataManagement;'
-                      'TrustServerCertificate=yes;'
-                      'UID=LabDatabaseManager;PWD=WeAreN0tTestingHT')
-
-cursor = conn.cursor()
-
-st.markdown("# Dashboard")
-
-#General Query funciton, returns a dataframe. Use this instead of pd.read_sql
-def getQuery(query):
-    cursor.execute(query)
-    Data = pd.DataFrame.from_records(cursor.fetchall(), columns=[col[0] for col in cursor.description])
-    return Data
+if 'UserName' not in st.session_state:
+    st.session_state['UserName'] = ''
+if 'UserId' not in st.session_state:
+    st.session_state['UserId'] = ''
+if 'UserUri' not in st.session_state:
+    st.session_state['UserUri'] = ''
+    
 
 # Scopes required for accessing user's currently playing track
 SCOPE = "user-read-playback-state user-read-currently-playing"
@@ -51,10 +38,45 @@ sp_oauth = SpotifyOAuth(client_id=credentials.CLIENT_ID,
                         redirect_uri=credentials.REDIRECT_URI,
                         scope=SCOPE)
 
+#connection string 
+conn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
+                      f'Server={credentials.dbConnectionLocation};'
+                      f'Database={credentials.dbID};'
+                      'TrustServerCertificate=yes;'
+                      f'UID={credentials.dbUsername};PWD={credentials.dbPassword}')
+
+cursor = conn.cursor()
+
 def errorLog(errorMessage):
     f = open("error.txt", "a")
     f.write(f"{datetime.datetime.now()} - {errorMessage} \n")
     f.close()
+
+#General Query funciton, returns a dataframe. Use this instead of pd.read_sql
+def getQuery(query):
+    cursor.execute(query)
+    Data = pd.DataFrame.from_records(cursor.fetchall(), columns=[col[0] for col in cursor.description])
+    return Data
+
+def getUserId(uri, userName):
+    userIdQuery = f"SELECT * FROM userInfo WHERE userUri = '{uri}'"
+    userId = getQuery(userIdQuery)
+    if len(userId) > 0:
+        userId = userId.iloc[0].to_dict()
+        if (userName) != userId["userName"]: errorLog("Username in DB and username from Spotify do not match")
+        st.toast(f"Thanks for returing {userId["userName"]}!")
+        return userId["userId"]
+    else:
+        newUserQuery = "SELECT MAX(userId) FROM userInfo"
+        newUserId = getQuery(newUserQuery).values[0][0]
+        if newUserId == None:
+            newUserId = 1
+        else: newUserId = int(newUserId) + 1
+        print(newUserId, userName, uri)
+        insertNewUserQuery = "INSERT INTO userInfo (userId, userName, userUri) VALUES (?, ?, ?)"
+        cursor.execute(insertNewUserQuery, (newUserId, userName, uri))
+        conn.commit()
+        return newUserId
 
 def login():
     query_params = st.query_params  # Updated from experimental_get_query_params()
@@ -117,35 +139,30 @@ def getUserInfo():
 
     requestsAsJsonUser = submitRequest("https://api.spotify.com/v1/me", "Get Users PlaybackState", {})
 
-    return str(requestsAsJsonUser["display_name"])
+    return (str(requestsAsJsonUser["display_name"]), (str(requestsAsJsonUser["uri"])))
 
 
 # Get Information for the Live Player
 def getUserCurrentSongPlaying():
 
     requestsAsJsonPlayer = submitRequest("https://api.spotify.com/v1/me/player", "Get Users PlaybackState", {})
-
     requestsAsDict = {}
 
     if requestsAsJsonPlayer is not None:
-        requestsAsDict["SongCurrentPosition"] = requestsAsJsonPlayer['progress_ms']
         requestsAsJsonSong = requestsAsJsonPlayer["item"]
+        playerCurrent = json_normalize(requestsAsJsonSong)
+        playerCurrent["SongCurrentPosition"] = requestsAsJsonPlayer['progress_ms']
+        playerCurrent["CurrentPlaylist"] = requestsAsJsonPlayer['context']["uri"]
+
+        if  requestsAsJsonSong is not None:
+            playerCurrent = playerCurrent[["id", "name","album.name","duration_ms","is_local","artists","album.images","SongCurrentPosition","CurrentPlaylist"]]
+            playerCurrent['artists'] = playerCurrent['artists'].apply(extract_item)
+            playerCurrent['album.images'] = json_normalize(playerCurrent['album.images'][0])["url"]
+            
+        return playerCurrent
+
     else:
         requestsAsJsonSong = None
-
-    if  requestsAsJsonSong is not None:
-        requestsAsDict["SongName"] = requestsAsJsonSong["name"]
-        requestsAsDict["ArtistsName"] = requestsAsJsonSong["artists"][0]["name"]
-        requestsAsDict["AlbumName"] = requestsAsJsonSong["album"]["name"]
-        requestsAsDict["AlbumArtHMTL"] = requestsAsJsonSong['album']['images'][0]['url']
-        requestsAsDict["SongLength"] = requestsAsJsonSong['duration_ms']
-    
-    else: return {"SongName": "Not Playing", "ArtistsName": "", "AlbumName": "", "AlbumArtHMTL": "", "SongCurrentPosition": 69, "SongLength":100 }
-
-    return requestsAsDict
-
-
-# Get Information for Listening History and Skip Function
 
 # Function to extract 'name' from each JSON object in the array
 def extract_item(json_array, key='name'):
@@ -166,7 +183,7 @@ def getHistoricalListening(after, before):
         beforeStamp = requestsAsJsonHistory["cursors"]["before"]
         return userHistory, beforeStamp
 
-    elif requestsAsJsonHistory["items"] == []:
+    elif "items" not in requestsAsJsonHistory:
         print("No more data")
         return (None, None)
 
@@ -188,6 +205,7 @@ def getAsMuchHistoricalData():
             break
 
     historicalData = historicalData.drop_duplicates(subset="track.id")
+    historicalData["played_at"] = historicalData["played_at"] - datetime.timedelta(hours=4) #Spotify seems to give data 4 hours ahead
     historicalData.reset_index(inplace=True, drop=True)
 
     return historicalData
@@ -221,6 +239,7 @@ def getUsersPlaylists(username):
 
     return userPlaylists
 
+st.set_page_config(layout="wide")
 st.title("Simmplify")
 
 st.divider()
@@ -230,41 +249,69 @@ player = st.empty()
 st.divider()
 
 login()
-userName = getUserInfo()
-st.session_state["User"] = userName
+userName, userUri = getUserInfo()
+userId = getUserId(userUri, userName)
+
+st.session_state["UserName"] = userName
+st.session_state["UserUri"] = userUri
+st.session_state["UserId"] = userId
 
 st.markdown("## User Created Playlists")
 userPlaylists = getUsersPlaylists(userName)
-userPlaylists
+playlists = st.empty()
 
 st.divider()
 
 st.markdown("## Historical Data (Last 50 songs)")
 historicalData = getAsMuchHistoricalData()
 historicalDataWCalc = calculateSkipFraction(historicalData)
-historicalDataWCalc
+historical = st.empty()
+
+with playlists.container():
+    userPlaylists
 
 # Streamlit app - callback page
 def callback_page():
 
     startTime = datetime.datetime.now()
 
+    prevSongId = ""
+    prevSongStart = datetime.datetime.now()
+
     while True:
+    
         if (startTime - datetime.datetime.now()).total_seconds() % 10 < 1:
             login()
-            getUserCurrentSongPlayingDict = getUserCurrentSongPlaying()
+            getUserCurrentSongPlayingDict = getUserCurrentSongPlaying().to_dict('records')[0]
 
-        else: getUserCurrentSongPlayingDict["SongCurrentPosition"] = min(float(getUserCurrentSongPlayingDict["SongLength"]), float(getUserCurrentSongPlayingDict["SongCurrentPosition"]) + 1000)
+        else: getUserCurrentSongPlayingDict["SongCurrentPosition"] = min(float(getUserCurrentSongPlayingDict["duration_ms"]), float(getUserCurrentSongPlayingDict["SongCurrentPosition"]) + 1000)
+
+        if prevSongId != getUserCurrentSongPlayingDict["id"]:
+            if prevSongId == "":
+                prevSongId = getUserCurrentSongPlayingDict["id"]
+                prevSongStart = datetime.datetime.now()
+
+            else:
+                playedFor = (datetime.datetime.now() - prevSongStart).total_seconds() * 1000
+                ListeningFraction = playedFor / float(getUserCurrentSongPlayingDict["duration_ms"])
+                SkippedFraction = 1 - ListeningFraction
+                historicalDataWCalc.loc[len(historicalDataWCalc.index)] = [prevSongStart, float(getUserCurrentSongPlayingDict["duration_ms"]),prevSongId, False, getUserCurrentSongPlayingDict["name"], getUserCurrentSongPlayingDict["CurrentPlaylist"], list(getUserCurrentSongPlayingDict["artists"]),playedFor, ListeningFraction, SkippedFraction] 
 
         with player.container():
             c1, c2, c3, c4 = st.columns(4)
             c1.markdown("## Player")
-            c2.markdown(f'SONG: {getUserCurrentSongPlayingDict["SongName"]}')
-            c2.markdown(f'Artists: {getUserCurrentSongPlayingDict["ArtistsName"]}')
-            c2.markdown(f'Album: {getUserCurrentSongPlayingDict["AlbumName"]}')
-            if getUserCurrentSongPlayingDict["AlbumArtHMTL"] != "": c3.image(getUserCurrentSongPlayingDict["AlbumArtHMTL"], width=150)
-            c2.progress(float(getUserCurrentSongPlayingDict["SongCurrentPosition"]) / float(getUserCurrentSongPlayingDict["SongLength"]))
-            c4.markdown(f"Welcome: {st.session_state["User"]}")
+            c2.markdown(f'SONG: {getUserCurrentSongPlayingDict["name"]}')
+            c2.markdown(f'Artists: {','.join(getUserCurrentSongPlayingDict["artists"])}')
+            c2.markdown(f'Album: {getUserCurrentSongPlayingDict["album.name"]}')
+            c2.markdown(f'Playlist: {getUserCurrentSongPlayingDict["CurrentPlaylist"]}')
+            
+            if getUserCurrentSongPlayingDict["album.images"] != "": c3.image(getUserCurrentSongPlayingDict["album.images"], width=150)
+            c2.progress(float(getUserCurrentSongPlayingDict["SongCurrentPosition"]) / float(getUserCurrentSongPlayingDict["duration_ms"]))
+            c4.markdown(f"Welcome: {st.session_state["UserName"]}")
+        
+        with historical.container():
+            #print(historicalDataWCalc.dtypes)
+            historicalDataWCalc
 
         time.sleep(1)
 
