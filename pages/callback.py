@@ -30,6 +30,8 @@ if 'UserUri' not in st.session_state:
     st.session_state['UserUri'] = ''
 if 'SelectedPlaylist' not in st.session_state:
     st.session_state['SelectedPlaylist'] = ''
+if 'historicalDataDisplay' not in st.session_state:
+    st.session_state['historicalDataDisplay'] = pd.DataFrame()
     
 
 # Scopes required for accessing user's currently playing track
@@ -55,7 +57,6 @@ def errorLog(errorMessage):
     f.close()
 
 #General Query funciton, returns a dataframe. Use this instead of pd.read_sql
-@st.cache_data
 def getQuery(query):
     cursor.execute(query)
     Data = pd.DataFrame.from_records(cursor.fetchall(), columns=[col[0] for col in cursor.description])
@@ -154,7 +155,6 @@ def login():
         st.error("Authorization code not found in URL. Please try again.")
 
 #General Request call for Spotify
-@st.cache_data
 def submitRequest(endpoint, functionName, params):
 
     # Define the endpoint for currently playing track
@@ -291,6 +291,25 @@ def getSongName(idList):
     print(songNames)
     return songNames
 
+def updateHistoricalDataDisplay():
+    print("Getting Historical Data") 
+    historicalData = getAsMuchHistoricalData()
+    historicalDataWCalc = calculateSkipFraction(historicalData)
+    insertHistoricalData(userId, historicalDataWCalc)
+    historicalDataRaw = getUsersSongs(userId)
+    historicalDataEdits = historicalDataRaw.drop(["userId","timestamp"], axis=1)
+    historicalDataEdits = historicalDataEdits.groupby('songUri').agg({
+        'playlistUri': 'first',    # Sum the values
+        'ListeningFraction': 'sum',  # Keep the same value
+        'SkippedFraction': 'sum'   # Keep the same value
+        }).reset_index()
+    
+    historicalDataEdits["songNames"] = getSongName(historicalDataEdits["songUri"])
+
+    historicalDataDisplay = historicalDataEdits[historicalDataEdits["playlistUri"] == st.session_state['SelectedPlaylist']]
+    st.session_state["historicalDataDisplay"] = historicalDataDisplay
+
+
 st.set_page_config(layout="wide")
 st.title("Simmplify")
 
@@ -315,7 +334,7 @@ playlists = st.empty()
 st.divider()
 
 st.markdown("## Historical Data (Last 50 songs)")
-selectedPlaylistName = st.selectbox("Choose Playlist", options=list(userPlaylists["name"].unique()))
+selectedPlaylistName = st.selectbox("Choose Playlist",placeholder="", options=list(userPlaylists["name"].unique()), on_change=updateHistoricalDataDisplay())
 st.session_state['SelectedPlaylist'] = userPlaylists[userPlaylists["name"] == selectedPlaylistName]["uri"].values[0]
 historicalData = getAsMuchHistoricalData()
 historicalDataWCalc = calculateSkipFraction(historicalData)
@@ -332,7 +351,7 @@ def callback_page():
 
     while True:
     
-        if (startTime - datetime.datetime.now()).total_seconds() % 30 < 1:
+        if (startTime - datetime.datetime.now()).total_seconds() % 10 < 1:
             login()
             getUserCurrentSongPlayingDict = getUserCurrentSongPlaying().to_dict('records')[0]
 
@@ -352,23 +371,9 @@ def callback_page():
             c4.markdown(f"Welcome: {st.session_state["UserName"]}")
         
         with historical.container():
-            if (startTime - datetime.datetime.now()).total_seconds() % 60*30 < 1:
-                print("Getting Historical Data") 
-                historicalData = getAsMuchHistoricalData()
-                historicalDataWCalc = calculateSkipFraction(historicalData)
-                insertHistoricalData(userId, historicalDataWCalc)
-                historicalDataRaw = getUsersSongs(userId)
-                historicalDataEdits = historicalDataRaw.drop(["userId","timestamp"], axis=1)
-                historicalDataEdits = historicalDataEdits.groupby('songUri').agg({
-                    'playlistUri': 'first',    # Sum the values
-                    'ListeningFraction': 'sum',  # Keep the same value
-                    'SkippedFraction': 'sum'   # Keep the same value
-                    }).reset_index()
-                
-                historicalDataEdits["songNames"] = getSongName(historicalDataEdits["songUri"])
-
-                historicalDataDisplay = historicalDataEdits[historicalDataEdits["playlistUri"] == st.session_state['SelectedPlaylist']]
-                historicalDataDisplay
+            if (startTime - datetime.datetime.now()).total_seconds() % 60*10 < 1:
+                updateHistoricalDataDisplay()
+            st.dataframe(st.session_state["historicalDataDisplay"])
 
         time.sleep(1)
 
