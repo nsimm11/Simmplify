@@ -28,6 +28,8 @@ if 'UserId' not in st.session_state:
     st.session_state['UserId'] = ''
 if 'UserUri' not in st.session_state:
     st.session_state['UserUri'] = ''
+if 'SelectedPlaylist' not in st.session_state:
+    st.session_state['SelectedPlaylist'] = ''
     
 
 # Scopes required for accessing user's currently playing track
@@ -72,13 +74,51 @@ def getUserId(uri, userName):
         if newUserId == None:
             newUserId = 1
         else: newUserId = int(newUserId) + 1
-        print(newUserId, userName, uri)
         insertNewUserQuery = "INSERT INTO userInfo (userId, userName, userUri) VALUES (?, ?, ?)"
         cursor.execute(insertNewUserQuery, (newUserId, userName, uri))
         conn.commit()
         return newUserId
 
+def checkUsersPlaylist():
+
+    return True
+
+def getUsersSongs(userId):
+    usersSongsQuery = f"SELECT * FROM processData WHERE userId = {userId}"
+    songHistory = getQuery(usersSongsQuery)
+    return songHistory
+
+
+def insertHistoricalData(userId, userHistoricalData):
+    # Prepare data for insertion
+    data_to_insert = []
+    for i, r in userHistoricalData.iterrows():
+        timestamp = int(datetime.datetime.timestamp(r["played_at"]))  # Assuming r["played_at"] is a datetime object
+        songUri = r["track.id"]
+        playlistUri = r["context.uri"]
+        fractionListened = r["ListeningFraction"]
+        fractionSkipped = r["SkippedFraction"]
+        data_to_insert.append((timestamp, userId, playlistUri, songUri, fractionListened, fractionSkipped))
+
+    # Construct the SQL MERGE query dynamically
+    merge_sql = """
+    MERGE INTO processData AS target
+    USING (VALUES {}) AS source (timestamp, userId, playlistUri, songUri, ListeningFraction, SkippedFraction)
+    ON target.timestamp = source.timestamp AND target.userId = source.userId
+    WHEN NOT MATCHED THEN
+        INSERT (timestamp, userId, playlistUri, songUri, ListeningFraction, SkippedFraction)
+        VALUES (source.timestamp, source.userId, source.playlistUri, source.songUri, source.ListeningFraction, source.SkippedFraction);
+    """.format(', '.join(['(?, ?, ?, ?, ?, ?)'] * len(data_to_insert)))
+
+    # Flatten the data list for execution
+    flattened_data = [item for sublist in data_to_insert for item in sublist]
+
+    # Execute the merge query in one go
+    cursor.execute(merge_sql, flattened_data)
+    conn.commit()
+
 def login():
+
     query_params = st.query_params  # Updated from experimental_get_query_params()
     code = query_params.get("code")
 
@@ -170,7 +210,7 @@ def extract_item(json_array, key='name'):
 
 def getHistoricalListening(after, before):
 
-    params = {"limit": 10, "after": after, "before": before}
+    params = {"limit": 50, "after": after, "before": before}
 
     requestsAsJsonHistory = submitRequest("https://api.spotify.com/v1/me/player/recently-played", "Get Users History", params)
 
@@ -217,10 +257,11 @@ def calculateSkipFraction(listeningHistory):
     listeningHistory.dropna(axis=0, inplace=True)
     listeningHistory["ListeningFraction"] = (1 - (listeningHistory["track.duration_ms"] - listeningHistory["played_for"]) / listeningHistory["track.duration_ms"]).clip(upper=1)
     listeningHistory["SkippedFraction"] = 1 - listeningHistory["ListeningFraction"]
+    listeningHistory["context.uri"] = listeningHistory["context.uri"].str.split(':').str[2]
     return listeningHistory
 
 def getUsersPlaylists(username):
-    params = {"limit": 15}
+    params = {"limit": 35}
     requestsAsJsonPlaylists = submitRequest("https://api.spotify.com/v1/me/playlists", "Get Users History", params)
 
     if len(requestsAsJsonPlaylists["items"]) == 0:
@@ -265,6 +306,7 @@ st.divider()
 st.markdown("## Historical Data (Last 50 songs)")
 historicalData = getAsMuchHistoricalData()
 historicalDataWCalc = calculateSkipFraction(historicalData)
+insertHistoricalData(userId, historicalDataWCalc)
 historical = st.empty()
 
 with playlists.container():
@@ -275,27 +317,13 @@ def callback_page():
 
     startTime = datetime.datetime.now()
 
-    prevSongId = ""
-    prevSongStart = datetime.datetime.now()
-
     while True:
     
-        if (startTime - datetime.datetime.now()).total_seconds() % 10 < 1:
+        if (startTime - datetime.datetime.now()).total_seconds() % 10 < 5:
             login()
             getUserCurrentSongPlayingDict = getUserCurrentSongPlaying().to_dict('records')[0]
 
         else: getUserCurrentSongPlayingDict["SongCurrentPosition"] = min(float(getUserCurrentSongPlayingDict["duration_ms"]), float(getUserCurrentSongPlayingDict["SongCurrentPosition"]) + 1000)
-
-        if prevSongId != getUserCurrentSongPlayingDict["id"]:
-            if prevSongId == "":
-                prevSongId = getUserCurrentSongPlayingDict["id"]
-                prevSongStart = datetime.datetime.now()
-
-            else:
-                playedFor = (datetime.datetime.now() - prevSongStart).total_seconds() * 1000
-                ListeningFraction = playedFor / float(getUserCurrentSongPlayingDict["duration_ms"])
-                SkippedFraction = 1 - ListeningFraction
-                historicalDataWCalc.loc[len(historicalDataWCalc.index)] = [prevSongStart, float(getUserCurrentSongPlayingDict["duration_ms"]),prevSongId, False, getUserCurrentSongPlayingDict["name"], getUserCurrentSongPlayingDict["CurrentPlaylist"], list(getUserCurrentSongPlayingDict["artists"]),playedFor, ListeningFraction, SkippedFraction] 
 
         with player.container():
             c1, c2, c3, c4 = st.columns(4)
@@ -310,8 +338,12 @@ def callback_page():
             c4.markdown(f"Welcome: {st.session_state["UserName"]}")
         
         with historical.container():
-            #print(historicalDataWCalc.dtypes)
-            historicalDataWCalc
+            if (startTime - datetime.datetime.now()).total_seconds() % 60 < 1:
+                print("check")
+            historicalDataRaw = getUsersSongs(userId)
+            historicalDataRaw.drop(["userId"], axis=1)
+            st.session_state['SelectedPlaylist'] = st.selectbox("Choose Playlist", options=list(historicalDataRaw["playlistUri"].unique()), key=str(datetime.datetime.now()))
+            historicalDataRaw[historicalDataRaw["playlistUri"] == st.session_state['SelectedPlaylist']]
 
         time.sleep(1)
 
