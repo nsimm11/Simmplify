@@ -55,6 +55,7 @@ def errorLog(errorMessage):
     f.close()
 
 #General Query funciton, returns a dataframe. Use this instead of pd.read_sql
+@st.cache_data
 def getQuery(query):
     cursor.execute(query)
     Data = pd.DataFrame.from_records(cursor.fetchall(), columns=[col[0] for col in cursor.description])
@@ -153,6 +154,7 @@ def login():
         st.error("Authorization code not found in URL. Please try again.")
 
 #General Request call for Spotify
+@st.cache_data
 def submitRequest(endpoint, functionName, params):
 
     # Define the endpoint for currently playing track
@@ -192,10 +194,10 @@ def getUserCurrentSongPlaying():
         requestsAsJsonSong = requestsAsJsonPlayer["item"]
         playerCurrent = json_normalize(requestsAsJsonSong)
         playerCurrent["SongCurrentPosition"] = requestsAsJsonPlayer['progress_ms']
-        playerCurrent["CurrentPlaylist"] = requestsAsJsonPlayer['context']["uri"]
+        playerCurrent["CurrentPlaylistUri"] = requestsAsJsonPlayer['context']["uri"].split(":")[2]
 
         if  requestsAsJsonSong is not None:
-            playerCurrent = playerCurrent[["id", "name","album.name","duration_ms","is_local","artists","album.images","SongCurrentPosition","CurrentPlaylist"]]
+            playerCurrent = playerCurrent[["id", "name","album.name","duration_ms","is_local","artists","album.images","SongCurrentPosition","CurrentPlaylistUri"]]
             playerCurrent['artists'] = playerCurrent['artists'].apply(extract_item)
             playerCurrent['album.images'] = json_normalize(playerCurrent['album.images'][0])["url"]
             
@@ -277,8 +279,17 @@ def getUsersPlaylists(username):
     else:
         userPlaylists = (json_normalize(requestsAsJsonPlaylists["items"]))[["uri", "name", "owner.display_name", "owner.id"]]
         userPlaylists = userPlaylists[(userPlaylists["owner.id"] == username) | (userPlaylists["owner.display_name"] == username)]
+        userPlaylists["uri"] = userPlaylists["uri"].str.split(":").str[2]
 
     return userPlaylists
+
+def getSongName(idList):
+    params = {}
+    songNames = []
+    for id in list(idList):
+        songNames.append(submitRequest(f"https://api.spotify.com/v1/tracks/{id}", "Get song name", params)["name"])
+    print(songNames)
+    return songNames
 
 st.set_page_config(layout="wide")
 st.title("Simmplify")
@@ -304,6 +315,8 @@ playlists = st.empty()
 st.divider()
 
 st.markdown("## Historical Data (Last 50 songs)")
+selectedPlaylistName = st.selectbox("Choose Playlist", options=list(userPlaylists["name"].unique()))
+st.session_state['SelectedPlaylist'] = userPlaylists[userPlaylists["name"] == selectedPlaylistName]["uri"].values[0]
 historicalData = getAsMuchHistoricalData()
 historicalDataWCalc = calculateSkipFraction(historicalData)
 insertHistoricalData(userId, historicalDataWCalc)
@@ -319,7 +332,7 @@ def callback_page():
 
     while True:
     
-        if (startTime - datetime.datetime.now()).total_seconds() % 10 < 5:
+        if (startTime - datetime.datetime.now()).total_seconds() % 30 < 1:
             login()
             getUserCurrentSongPlayingDict = getUserCurrentSongPlaying().to_dict('records')[0]
 
@@ -331,19 +344,31 @@ def callback_page():
             c2.markdown(f'SONG: {getUserCurrentSongPlayingDict["name"]}')
             c2.markdown(f'Artists: {','.join(getUserCurrentSongPlayingDict["artists"])}')
             c2.markdown(f'Album: {getUserCurrentSongPlayingDict["album.name"]}')
-            c2.markdown(f'Playlist: {getUserCurrentSongPlayingDict["CurrentPlaylist"]}')
+            playlistName = userPlaylists[userPlaylists["uri"] == getUserCurrentSongPlayingDict["CurrentPlaylistUri"]]["name"].values[0]
+            c2.markdown(f'Playlist: {playlistName}')
             
             if getUserCurrentSongPlayingDict["album.images"] != "": c3.image(getUserCurrentSongPlayingDict["album.images"], width=150)
             c2.progress(float(getUserCurrentSongPlayingDict["SongCurrentPosition"]) / float(getUserCurrentSongPlayingDict["duration_ms"]))
             c4.markdown(f"Welcome: {st.session_state["UserName"]}")
         
         with historical.container():
-            if (startTime - datetime.datetime.now()).total_seconds() % 60 < 1:
-                print("check")
-            historicalDataRaw = getUsersSongs(userId)
-            historicalDataRaw.drop(["userId"], axis=1)
-            st.session_state['SelectedPlaylist'] = st.selectbox("Choose Playlist", options=list(historicalDataRaw["playlistUri"].unique()), key=str(datetime.datetime.now()))
-            historicalDataRaw[historicalDataRaw["playlistUri"] == st.session_state['SelectedPlaylist']]
+            if (startTime - datetime.datetime.now()).total_seconds() % 60*30 < 1:
+                print("Getting Historical Data") 
+                historicalData = getAsMuchHistoricalData()
+                historicalDataWCalc = calculateSkipFraction(historicalData)
+                insertHistoricalData(userId, historicalDataWCalc)
+                historicalDataRaw = getUsersSongs(userId)
+                historicalDataEdits = historicalDataRaw.drop(["userId","timestamp"], axis=1)
+                historicalDataEdits = historicalDataEdits.groupby('songUri').agg({
+                    'playlistUri': 'first',    # Sum the values
+                    'ListeningFraction': 'sum',  # Keep the same value
+                    'SkippedFraction': 'sum'   # Keep the same value
+                    }).reset_index()
+                
+                historicalDataEdits["songNames"] = getSongName(historicalDataEdits["songUri"])
+
+                historicalDataDisplay = historicalDataEdits[historicalDataEdits["playlistUri"] == st.session_state['SelectedPlaylist']]
+                historicalDataDisplay
 
         time.sleep(1)
 
