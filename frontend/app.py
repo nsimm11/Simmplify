@@ -24,7 +24,6 @@ def main():
 
     # Step 1: Get the authentication URL
     auth_url = sp_oauth.get_authorize_url()
-    
     # Step 2: Display the link using markdown
     st.write("### Step 1: Click the link to authenticate with Spotify")
         # Embed HTML with target="_self"
