@@ -44,10 +44,10 @@ sp_oauth = SpotifyOAuth(client_id=credentials.CLIENT_ID,
 
 #connection string 
 conn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
-                      f'Server={credentials.dbConnectionLocation};'
-                      f'Database={credentials.dbID};'
-                      'TrustServerCertificate=yes;'
-                      f'UID={credentials.dbUsername};PWD={credentials.dbPassword}')
+                     f'Server={credentials.dbConnectionLocation};'
+                     f'Database={credentials.dbID};'
+                     'TrustServerCertificate=yes;'
+                     f'UID={credentials.dbUsername};PWD={credentials.dbPassword}')
 
 cursor = conn.cursor()
 
@@ -62,6 +62,7 @@ def getQuery(query):
     Data = pd.DataFrame.from_records(cursor.fetchall(), columns=[col[0] for col in cursor.description])
     return Data
 
+    
 def getUserId(uri, userName):
     userIdQuery = f"SELECT * FROM userInfo WHERE userUri = '{uri}'"
     userId = getQuery(userIdQuery)
@@ -89,7 +90,6 @@ def getUsersSongs(userId):
     usersSongsQuery = f"SELECT * FROM processData WHERE userId = {userId}"
     songHistory = getQuery(usersSongsQuery)
     return songHistory
-
 
 def insertHistoricalData(userId, userHistoricalData):
     # Prepare data for insertion
@@ -188,7 +188,6 @@ def getUserInfo():
 def getUserCurrentSongPlaying():
 
     requestsAsJsonPlayer = submitRequest("https://api.spotify.com/v1/me/player", "Get Users PlaybackState", {})
-    requestsAsDict = {}
 
     if requestsAsJsonPlayer is not None:
         requestsAsJsonSong = requestsAsJsonPlayer["item"]
@@ -263,7 +262,7 @@ def calculateSkipFraction(listeningHistory):
     return listeningHistory
 
 def getUsersPlaylists(username):
-    params = {"limit": 35}
+    params = {"limit": 50}
     requestsAsJsonPlaylists = submitRequest("https://api.spotify.com/v1/me/playlists", "Get Users History", params)
 
     if len(requestsAsJsonPlaylists["items"]) == 0:
@@ -291,23 +290,23 @@ def getSongName(idList):
     print(songNames)
     return songNames
 
-def updateHistoricalDataDisplay():
-    print("Getting Historical Data") 
-    historicalData = getAsMuchHistoricalData()
-    historicalDataWCalc = calculateSkipFraction(historicalData)
-    insertHistoricalData(userId, historicalDataWCalc)
-    historicalDataRaw = getUsersSongs(userId)
-    historicalDataEdits = historicalDataRaw.drop(["userId","timestamp"], axis=1)
-    historicalDataEdits = historicalDataEdits.groupby('songUri').agg({
-        'playlistUri': 'first',    # Sum the values
-        'ListeningFraction': 'sum',  # Keep the same value
-        'SkippedFraction': 'sum'   # Keep the same value
-        }).reset_index()
-    
-    historicalDataEdits["songNames"] = getSongName(historicalDataEdits["songUri"])
 
-    historicalDataDisplay = historicalDataEdits[historicalDataEdits["playlistUri"] == st.session_state['SelectedPlaylist']]
-    st.session_state["historicalDataDisplay"] = historicalDataDisplay
+# def updateHistoricalDataDisplay():
+#     print("Getting Historical Data") 
+#     historicalData = getAsMuchHistoricalData()
+#     historicalDataWCalc = calculateSkipFraction(historicalData)
+#     insertHistoricalData(st.session_state['UserId'], historicalDataWCalc)
+#     historicalDataRaw = getUsersSongs(st.session_state['UserId'])
+#     historicalDataEdits = historicalDataRaw.drop(["userId","timestamp"], axis=1)
+#     historicalDataEdits = historicalDataEdits.groupby('songUri').agg({
+#         'playlistUri': 'first',    # Sum the values
+#         'ListeningFraction': 'sum',  # Keep the same value
+#         'SkippedFraction': 'sum'   # Keep the same value
+#         }).reset_index()
+
+#     historicalDataDisplay = historicalDataEdits[historicalDataEdits["playlistUri"] == st.session_state['SelectedPlaylist']]
+#     historicalDataDisplay["songNames"] = getSongName(historicalDataDisplay["songUri"])
+#     st.session_state["historicalDataDisplay"] = historicalDataDisplay
 
 
 st.set_page_config(layout="wide")
@@ -321,7 +320,7 @@ st.divider()
 
 login()
 userName, userUri = getUserInfo()
-userId = getUserId(userUri, userName)
+userId = getUserId_csv(userUri, userName)
 
 st.session_state["UserName"] = userName
 st.session_state["UserUri"] = userUri
@@ -334,11 +333,11 @@ playlists = st.empty()
 st.divider()
 
 st.markdown("## Historical Data (Last 50 songs)")
-selectedPlaylistName = st.selectbox("Choose Playlist",placeholder="", options=list(userPlaylists["name"].unique()), on_change=updateHistoricalDataDisplay())
+selectedPlaylistName = st.selectbox("Choose Playlist",placeholder="", options=list(userPlaylists["name"].unique()), on_change=updateHistoricalDataDisplay_csv())
 st.session_state['SelectedPlaylist'] = userPlaylists[userPlaylists["name"] == selectedPlaylistName]["uri"].values[0]
 historicalData = getAsMuchHistoricalData()
 historicalDataWCalc = calculateSkipFraction(historicalData)
-insertHistoricalData(userId, historicalDataWCalc)
+insertHistoricalData_csv(userId, historicalDataWCalc)
 historical = st.empty()
 
 with playlists.container():
@@ -372,7 +371,7 @@ def callback_page():
         
         with historical.container():
             if (startTime - datetime.datetime.now()).total_seconds() % 60*10 < 1:
-                updateHistoricalDataDisplay()
+                updateHistoricalDataDisplay_csv()
             st.dataframe(st.session_state["historicalDataDisplay"])
 
         time.sleep(1)
