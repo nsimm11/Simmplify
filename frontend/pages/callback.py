@@ -4,11 +4,12 @@ from spotipy.oauth2 import SpotifyOAuth
 import os
 import requests
 import certifi
-import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 from pandas import json_normalize
 import time
 import pyodbc
+import pytz
 
 import credentials
 
@@ -34,6 +35,8 @@ if 'historicalDataDisplay' not in st.session_state:
     st.session_state['historicalDataDisplay'] = pd.DataFrame()
 if 'is_playing' not in st.session_state:
     st.session_state['is_playing'] = False
+if 'UserDbId' not in st.session_state:
+    st.session_state['UserDbId'] = ''
     
 
 # Scopes required for accessing user's currently playing track
@@ -45,52 +48,61 @@ sp_oauth = SpotifyOAuth(client_id=credentials.CLIENT_ID,
                         scope=SCOPE)
 
 #connection string 
-# conn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
-#                      f'Server={credentials.dbConnectionLocation};'
-#                      f'Database={credentials.dbID};'
-#                      'TrustServerCertificate=yes;'
-#                      f'UID={credentials.dbUsername};PWD={credentials.dbPassword}')
+conn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
+                     f'Server={credentials.dbConnectionLocation};'
+                     f'Database={credentials.dbID};'
+                     'TrustServerCertificate=yes;'
+                     f'UID={credentials.dbUsername};'
+                     f'PWD={credentials.dbPassword}')
 
-# cursor = conn.cursor()
+cursor = conn.cursor()
 
 def errorLog(errorMessage):
     f = open("error.txt", "a")
-    f.write(f"{datetime.datetime.now()} - {errorMessage} \n")
+    f.write(f"{datetime.now()} - {errorMessage} \n")
     f.close()
 
 #General Query funciton, returns a dataframe. Use this instead of pd.read_sql
-# def getQuery(query):
-#     cursor.execute(query)
-#     Data = pd.DataFrame.from_records(cursor.fetchall(), columns=[col[0] for col in cursor.description])
-#     return Data
+def getQuery(query, params=None):
+    if params is None:
+        params = []
+    cursor.execute(query, params)
+    Data = pd.DataFrame.from_records(cursor.fetchall(), columns=[col[0] for col in cursor.description])
+    return Data
     
-# def getUserId(uri, userName):
-#     userIdQuery = f"SELECT * FROM userInfo WHERE userUri = '{uri}'"
-#     userId = getQuery(userIdQuery)
-#     if len(userId) > 0:
-#         userId = userId.iloc[0].to_dict()
-#         if (userName) != userId["userName"]: errorLog("Username in DB and username from Spotify do not match")
-#         st.toast(f"Thanks for returing {userId["userName"]}!")
-#         return userId["userId"]
-#     else:
-#         newUserQuery = "SELECT MAX(userId) FROM userInfo"
-#         newUserId = getQuery(newUserQuery).values[0][0]
-#         if newUserId == None:
-#             newUserId = 1
-#         else: newUserId = int(newUserId) + 1
-#         insertNewUserQuery = "INSERT INTO userInfo (userId, userName, userUri) VALUES (?, ?, ?)"
-#         cursor.execute(insertNewUserQuery, (newUserId, userName, uri))
-#         conn.commit()
-#         return newUserId
+def getUserId():
+    # Ensure the correct table name and schema
+    userIdQuery = "SELECT * FROM dbo.USERS WHERE userUri = ?"
+    userUri = st.session_state['UserUri'].strip()
 
-def checkUsersPlaylist():
+    # Use parameterized query to prevent SQL injection
+    userId = getQuery(userIdQuery, [userUri])
+    
+    if len(userId) > 0:
+        userId = userId.iloc[0].to_dict()
+        if (st.session_state["UserName"]) != userId["userName"]: 
+            errorLog("Username in DB and username from Spotify do not match")
+        st.toast(f"Thanks for returning {userId['userName']}!")
+        st.session_state["UserDbId"] = userId["userId"]
+        return userId["userId"]
+    else:
+        newUserQuery = "SELECT MAX(userId) FROM dbo.USERS"
+        newUserId = getQuery(newUserQuery).values[0][0]
+        if newUserId is None:
+            newUserId = 1
+        else: 
+            newUserId = int(newUserId) + 1
 
-    return True
+        # Convert current time to Unix timestamp
+        utc_now = datetime.now(pytz.utc)
+        unix_timestamp = int(utc_now.timestamp())
 
-# def getUsersSongs(userId):
-#     usersSongsQuery = f"SELECT * FROM processData WHERE userId = {userId}"
-#     songHistory = getQuery(usersSongsQuery)
-#     return songHistory
+        insertNewUserQuery = "INSERT INTO dbo.USERS (dbId, userUri, userId, userName, lastLogin) VALUES (?, ?, ?, ?, ?)"
+        userName = st.session_state["UserName"]
+        cursor.execute(insertNewUserQuery, (newUserId, userUri, newUserId, userName, unix_timestamp))
+        conn.commit()
+        st.session_state["UserDbId"] = newUserId
+        return newUserId
 
 def login():
     query_params = st.query_params
@@ -98,31 +110,76 @@ def login():
 
     if code:
         try:
-            # No Token in session state, need to get access token
-            if st.session_state['access_token'] == "":
-                # Exchange the authorization code for an access token
-                token_info = sp_oauth.get_access_token(code)
-                access_token = token_info['access_token']
-                st.session_state['access_token'] = access_token
-                st.session_state['refresh_token'] = token_info['refresh_token']
-                st.session_state["access_token_endTime"] = datetime.datetime.fromtimestamp(token_info['expires_at']) - datetime.timedelta(minutes=3)
-                st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
+            # Exchange the authorization code for an access token
+            sp_oauth.get_access_token(code)  # This will cache the token internally
+            token_info = sp_oauth.get_cached_token()  # Retrieve the token info as a dictionary
             
-            # Token Available but expiring w/in 3 minutes
-            elif st.session_state['access_token'] != "" and datetime.datetime.now() > st.session_state["access_token_endTime"]:
-                st.warning("expiring token about to expire")
-                token_info = sp_oauth.refresh_access_token(st.session_state['refresh_token'])
-                st.session_state['access_token'] = token_info['access_token']
-                st.session_state["access_token_endTime"] = datetime.datetime.fromtimestamp(token_info['expires_at']) - datetime.timedelta(minutes=3)
-                st.toast(f"Token Updated!, expires at {st.session_state['access_token_endTime']}")
-            
-            else:
-                st.toast("Using Cached Access Token")
+            access_token = token_info['access_token']
+            expires_at_utc = datetime.fromtimestamp(token_info['expires_at'], pytz.utc)
+
+            # Store access token in session state
+            st.session_state['access_token'] = access_token
+            st.session_state["access_token_endTime"] = expires_at_utc - timedelta(minutes=3)
+            st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
         
         except Exception as e:
             st.warning(f"Error fetching the token: {e}")
     else:
         st.warning("Authorization code not found in URL. Please try again.")
+
+def getUserInfo():
+    try:
+        requestsAsJsonUser = submitRequest("https://api.spotify.com/v1/me", "Get Users PlaybackState", {})
+        
+        if requestsAsJsonUser is None:
+            st.warning("Failed to retrieve user information. Please check your connection and try again.")
+            return
+
+        userUri = requestsAsJsonUser["uri"]
+        st.session_state["UserName"] = str(requestsAsJsonUser["display_name"])
+        st.session_state["UserUri"] = userUri
+        st.session_state["UserId"] = str(requestsAsJsonUser["id"])
+
+        return st.session_state["UserName"], st.session_state["UserUri"], st.session_state["UserId"]
+    
+    except requests.exceptions.RequestException as e:
+        errorLog(f"API request error in getUserInfo: {e}")
+        st.warning("An error occurred while connecting to the Spotify API. Please try again later.")
+
+def storeTokensInDatabase():
+    db_id = st.session_state['UserDbId']
+    access_token = st.session_state['access_token']
+    expires_at_utc = st.session_state["access_token_endTime"] + timedelta(minutes=3)
+    refresh_token = sp_oauth.get_cached_token()['refresh_token']
+    userUri = st.session_state.get('UserUri', '').strip()
+
+    if not userUri:
+        errorLog("UserUri is empty. Cannot proceed with token operations.")
+        st.warning("UserUri is not set. Please try logging in again.")
+        return
+
+    # Check if a token entry already exists for this user
+    check_token_query = "SELECT id FROM USERTOKENS WHERE dbID = ?"
+    cursor.execute(check_token_query, (db_id,))
+    result = cursor.fetchone()
+
+    if result:
+        # Update existing token entry
+        update_token_query = """
+        UPDATE USERTOKENS 
+        SET accessToken = ?, accessTokenEndTime = ?, refreshToken = ?, lastUpdated = ?, userUri = ? 
+        WHERE dbID = ?
+        """
+        cursor.execute(update_token_query, (access_token, expires_at_utc, refresh_token, datetime.now(pytz.utc), userUri, db_id))
+    else:
+        # Insert new token entry
+        insert_token_query = """
+        INSERT INTO USERTOKENS (dbID, accessToken, accessTokenEndTime, refreshToken, lastUpdated, userUri) 
+        VALUES (?, ?, ?, ?, ?, ?)
+        """
+        cursor.execute(insert_token_query, (db_id, access_token, expires_at_utc, refresh_token, datetime.now(pytz.utc), userUri))
+    
+    conn.commit()
 
 #General Request call for Spotify
 def submitRequest(endpoint, functionName, params):
@@ -145,14 +202,6 @@ def submitRequest(endpoint, functionName, params):
         return current_response
     
     return None
-
-#Ge user infomrati9on
-def getUserInfo():
-
-    requestsAsJsonUser = submitRequest("https://api.spotify.com/v1/me", "Get Users PlaybackState", {})
-
-    return (str(requestsAsJsonUser["display_name"]), (str(requestsAsJsonUser["uri"])))
-
 
 # Get Information for the Live Player
 def spotifyUserCurrentSongPlaying():
@@ -189,7 +238,6 @@ def spotifyUsersPlaylists(username):
     if len(requestsAsJsonPlaylists["items"]) == 0:
         print("Request Empty - No Playlists")
         errorLog("Request Empty - No Playlists")
-
         return None
     
     elif requestsAsJsonPlaylists["total"] > 50:
@@ -199,9 +247,70 @@ def spotifyUsersPlaylists(username):
     else:
         userPlaylists = (json_normalize(requestsAsJsonPlaylists["items"]))[["uri", "name", "owner.display_name", "owner.id"]]
         userPlaylists = userPlaylists[(userPlaylists["owner.id"] == username) | (userPlaylists["owner.display_name"] == username)]
-        userPlaylists["uri"] = userPlaylists["uri"].str.split(":").str[2]
+        # Keep the full URI with the prefix
+        # userPlaylists["uri"] = userPlaylists["uri"].str.split(":").str[2]
 
     return userPlaylists
+
+def getHistoricalData(userUri, playlistUri):
+    # Join with SONGINFO table to get song details
+    historicalDataQuery = """
+    SELECT 
+        ld.userUri, 
+        ld.playlistUri,
+        si.songName,
+        si.artistName,
+        si.albumName,
+        ld.percentageListened,
+        ld.percentageSkipped,
+        CAST(ld.listeningStartTime AS datetime) AS listeningStartTime
+    FROM LISTENERDATA ld
+    JOIN SONGINFO si ON ld.songUri = si.songUri
+    WHERE ld.userUri = ? AND ld.playlistUri = ?
+    """
+    historicalData = getQuery(historicalDataQuery, [userUri, playlistUri])
+    return historicalData
+
+def format_historical_data(df, playlist_name):
+    # Add playlist name to the DataFrame
+    if playlist_name != "ALL":
+        df['Playlist Name'] = playlist_name
+    else:
+        # Fetch playlist names for each URI
+        playlist_names = userPlaylists.set_index('uri')['name'].to_dict()
+        df['Playlist Name'] = df['playlistUri'].map(playlist_names)
+
+    # Rename columns for better readability
+    df = df.rename(columns={
+        'songName': 'Song Name',
+        'artistName': 'Artist Name',
+        'albumName': 'Album Name',
+        'percentageListened': 'Percentage Listened',
+        'percentageSkipped': 'Skipped'
+    })
+
+    # Drop the playlistUri and songUri columns
+    df = df.drop(columns=['playlistUri', 'songUri'], errors='ignore')
+    df = df.sort_values(by='listeningStartTime', ascending=False)
+
+    # Reorder columns to move Playlist Name to the first position
+    columns_order = ['Playlist Name', 'Song Name', 'Artist Name', 'Album Name', 'Percentage Listened', 'Skipped', 'listeningStartTime']
+    df = df[columns_order]
+
+    # Apply conditional formatting
+    styled_df = df.style.applymap(
+        lambda val: 'background-color: {}'.format(
+            'green' if val > 50 else 'red'
+        ),
+        subset=['Percentage Listened']
+    ).applymap(
+        lambda val: 'background-color: {}'.format(
+            'red' if val > 50 else 'green'
+        ),
+        subset=['Skipped']
+    )
+
+    return styled_df
 
 st.set_page_config(layout="wide")
 st.title("Simmplify")
@@ -212,33 +321,60 @@ player = st.empty()
 
 st.divider()
 
+#Pull user information from database or spotify
 login()
+userName, userUri, userId = getUserInfo()
+useDbId = getUserId()
+storeTokensInDatabase()
 
-userName, userUri = getUserInfo()
-# userId = getUserId(userUri, userName)
-
-st.session_state["UserName"] = userName
-st.session_state["UserUri"] = userUri
-# st.session_state["UserId"] = userId
-
+#Get users playlists, allow user to select a playlist
 userPlaylists = spotifyUsersPlaylists(userName)
-playlists = st.empty()
+st.markdown("## Historical Listening Data")
 
-st.divider()
+# Add "ALL" option to the list of playlist names
+playlist_options = ["ALL"] + list(userPlaylists["name"].unique())
+selectedPlaylistName = st.selectbox("Choose Playlist", placeholder="-", options=playlist_options)
 
-st.markdown("## Historical Data (Last 50 songs)")
-selectedPlaylistName = st.selectbox("Choose Playlist",placeholder="", options=list(userPlaylists["name"].unique()))
-st.session_state['SelectedPlaylist'] = userPlaylists[userPlaylists["name"] == selectedPlaylistName]["uri"].values[0]
-historical = st.empty()
+# Determine the selected playlist URI
+if selectedPlaylistName == "ALL":
+    selectedPlaylistUri = None  # No filtering by playlist
+else:
+    selectedPlaylistUri = userPlaylists[userPlaylists["name"] == selectedPlaylistName]["uri"].values[0]
+
+st.session_state['SelectedPlaylist'] = selectedPlaylistUri
+
+# Display historical data associated with the selected playlist
+if selectedPlaylistUri:
+    historicalData = getHistoricalData(userUri, selectedPlaylistUri)
+else:
+    # Fetch all historical data if "ALL" is selected
+    historicalData = getQuery("""
+    SELECT 
+        ld.userUri, 
+        ld.playlistUri,
+        si.songName,
+        si.artistName,
+        si.albumName,
+        ld.percentageListened,
+        ld.percentageSkipped,
+        CAST(ld.listeningStartTime AS datetime) AS listeningStartTime
+    FROM LISTENERDATA ld
+    JOIN SONGINFO si ON ld.songUri = si.songUri
+    WHERE ld.userUri = ?
+    """, [userUri])
+
+# Use the function to format the historical data
+historicalData = format_historical_data(historicalData, selectedPlaylistName)
+st.dataframe(historicalData, hide_index=True)
 
 # Streamlit app - callback page
 def callback_page():
 
-    startTime = datetime.datetime.now()
+    startTime = datetime.now(pytz.utc)
 
     while True:
     
-        if (startTime - datetime.datetime.now()).total_seconds() % 10 < 1:
+        if (datetime.now(pytz.utc) - startTime).total_seconds() % 10 < 1:
             login()
             player_data = spotifyUserCurrentSongPlaying()
             if player_data is not None and not player_data.empty:
@@ -257,21 +393,26 @@ def callback_page():
 
         with player.container():
             c1, c2, c3, c4 = st.columns(4)
-            c1.markdown("## Player")
+            c1.markdown("## Player:")
             if st.session_state["is_playing"] == True:
                 c2.markdown(f'SONG: {userCurrentSongPlayingDict["name"]}')
-                c2.markdown(f'Artists: {','.join(userCurrentSongPlayingDict["artists"])}')
+                c2.markdown(f'Artists: {",".join(userCurrentSongPlayingDict["artists"])}')
                 c2.markdown(f'Album: {userCurrentSongPlayingDict["album.name"]}')
-                playlistName = userPlaylists[userPlaylists["uri"] == userCurrentSongPlayingDict["CurrentPlaylistUri"]]["name"].values[0]
-                c2.markdown(f'Playlist: {playlistName}')
-            
-                if userCurrentSongPlayingDict["album.images"] != "": c3.image(userCurrentSongPlayingDict["album.images"], width=150)
+                
+                # Check if playlistName is not empty
+                playlistName = userPlaylists[userPlaylists["uri"] == userCurrentSongPlayingDict["CurrentPlaylistUri"]]["name"]
+                if not playlistName.empty:
+                    c2.markdown(f'Playlist: {str(playlistName.values[0])}')
+                else:
+                    c2.markdown('Playlist: Unknown')
+
+                if userCurrentSongPlayingDict["album.images"] != "":
+                    c3.image(userCurrentSongPlayingDict["album.images"], width=150)
                 c2.progress(float(userCurrentSongPlayingDict["SongCurrentPosition"]) / userCurrentSongPlayingDict["duration_ms"])
-                c4.markdown(f"Welcome: {st.session_state["UserName"]}")
-            else: c2.markdown("## Player Paused")
+                c4.markdown(f"Welcome: {st.session_state['UserName']}")
+            else:
+                c2.markdown("## Paused")
         
-        with historical.container():
-            st.dataframe(st.session_state["historicalDataDisplay"])
 
         time.sleep(1)
 
