@@ -247,12 +247,10 @@ def spotifyUsersPlaylists(username):
     else:
         userPlaylists = (json_normalize(requestsAsJsonPlaylists["items"]))[["uri", "name", "owner.display_name", "owner.id"]]
         userPlaylists = userPlaylists[(userPlaylists["owner.id"] == username) | (userPlaylists["owner.display_name"] == username)]
-        # Keep the full URI with the prefix
-        # userPlaylists["uri"] = userPlaylists["uri"].str.split(":").str[2]
 
     return userPlaylists
 
-def getHistoricalData(userUri, playlistUri):
+def getHistoricalData(userUri):
     # Join with SONGINFO table to get song details
     historicalDataQuery = """
     SELECT 
@@ -266,9 +264,16 @@ def getHistoricalData(userUri, playlistUri):
         CAST(ld.listeningStartTime AS datetime) AS listeningStartTime
     FROM LISTENERDATA ld
     JOIN SONGINFO si ON ld.songUri = si.songUri
-    WHERE ld.userUri = ? AND ld.playlistUri = ?
+    WHERE ld.userUri = ?
     """
-    historicalData = getQuery(historicalDataQuery, [userUri, playlistUri])
+    historicalData = getQuery(historicalDataQuery, [userUri])
+    
+    # Convert listeningStartTime to user's local timezone and round to nearest second
+    user_timezone = pytz.timezone('America/New_York')  # Replace with the user's actual timezone
+    historicalData['listeningStartTime'] = historicalData['listeningStartTime'].apply(
+        lambda x: x.replace(tzinfo=pytz.utc).astimezone(user_timezone).replace(microsecond=0)
+    )
+    
     return historicalData
 
 def format_historical_data(df, playlist_name):
@@ -286,31 +291,138 @@ def format_historical_data(df, playlist_name):
         'artistName': 'Artist Name',
         'albumName': 'Album Name',
         'percentageListened': 'Percentage Listened',
-        'percentageSkipped': 'Skipped'
+        'percentageSkipped': 'Percentage Skipped',
+        'listeningStartTime': 'Listening Start Time'
     })
 
     # Drop the playlistUri and songUri columns
     df = df.drop(columns=['playlistUri', 'songUri'], errors='ignore')
-    df = df.sort_values(by='listeningStartTime', ascending=False)
+    df = df.sort_values(by='Listening Start Time', ascending=False)
 
     # Reorder columns to move Playlist Name to the first position
-    columns_order = ['Playlist Name', 'Song Name', 'Artist Name', 'Album Name', 'Percentage Listened', 'Skipped', 'listeningStartTime']
+    columns_order = ['Playlist Name', 'Song Name', 'Artist Name', 'Album Name', 'Percentage Listened', 'Percentage Skipped', 'Listening Start Time']
     df = df[columns_order]
 
-    # Apply conditional formatting
-    styled_df = df.style.applymap(
-        lambda val: 'background-color: {}'.format(
-            'green' if val > 50 else 'red'
-        ),
-        subset=['Percentage Listened']
-    ).applymap(
-        lambda val: 'background-color: {}'.format(
-            'red' if val > 50 else 'green'
-        ),
-        subset=['Skipped']
+    # Apply gradient formatting
+    styled_df = df.style.background_gradient(
+        cmap='RdYlGn',  # Red to Yellow to Green gradient
+        subset=['Percentage Listened'],
+        vmin=0, vmax=100  # Set the range for the gradient
+    ).background_gradient(
+        cmap='RdYlGn_r',  # Reverse the gradient for Percentage Skipped
+        subset=['Percentage Skipped'],
+        vmin=0, vmax=100
     )
 
     return styled_df
+
+def getSummarizedData(historicalData, selectedPlaylistUri,userPlaylists):
+    if selectedPlaylistUri is not None:
+        historicalData = historicalData[historicalData['playlistUri'] == selectedPlaylistUri]
+    
+    playlist_names = userPlaylists.set_index('uri')['name'].to_dict()
+    historicalData["Playlist Name"] = historicalData['playlistUri'].map(playlist_names)
+
+    # Group by 'songName', 'artistName', 'albumName' and aggregate sums
+    summarizedData = historicalData.groupby(['Playlist Name', 'songName', 'artistName', 'albumName']).agg({
+        'percentageListened': 'sum',
+        'percentageSkipped': 'sum'
+    }).reset_index()
+
+    # Rename columns for better readability
+    summarizedData = summarizedData.rename(columns={
+        'songName': 'Song Name',
+        'artistName': 'Artist Name',
+        'albumName': 'Album Name',
+        'percentageListened': 'Listened Total',
+        'percentageSkipped': 'Skipped Total'
+    })
+
+    # Add a new column for Preference Score
+    summarizedData['Preference Score'] = summarizedData['Listened Total'] - summarizedData['Skipped Total']
+
+    # Sort by Preference Score in descending order
+    summarizedData = summarizedData.sort_values(by='Preference Score', ascending=True)
+
+    # Apply conditional formatting based on Preference Score
+    def highlight_row(row):
+        score = row['Preference Score']
+        if score > 0:
+            return ['background-color: green'] * len(row)
+        elif score > -300:
+            return ['background-color: yellow'] * len(row)
+        else:
+            return ['background-color: red'] * len(row)
+
+    styled_summarizedData = summarizedData.style.apply(highlight_row, axis=1)
+
+    return styled_summarizedData
+
+def getSpotifyHistoricalData(userUri, historicalData):
+    # Find the most recent listeningStartTime in the historicalData DataFrame
+    if not historicalData.empty:
+        most_recent_listening = historicalData['listeningStartTime'].max()
+        most_recent_listening_timestamp = int(most_recent_listening.timestamp() * 1000)
+    else:
+        print("No Historical Data Found")
+        return pd.DataFrame(columns=['playlistUri', 'songUri', 'listenedPercentage', 'skippedPercentage', 'listeningStartTime'])
+
+    all_songs = []
+    while True:
+        # Fetch historical data from Spotify since the most recent listeningStartTime
+        spotifyHistoricalData = submitRequest(
+            "https://api.spotify.com/v1/me/player/recently-played", 
+            "Get Users Recently Played", 
+            {"after": most_recent_listening_timestamp, "limit": 50}
+        )
+
+        if not spotifyHistoricalData or 'items' not in spotifyHistoricalData:
+            print("No more data to fetch")
+            break
+
+        # Process each song and append to the all_songs list
+        for item in spotifyHistoricalData['items']:
+            song_data = {
+                'playlistUri': item['context']['uri'] if item['context'] else None,
+                'songUri': item['track']['uri'],
+                'listenedPercentage': 100,
+                'skippedPercentage': 0,
+                'listeningStartTime': item['played_at']
+            }
+            
+            # Check if the songUri is already in the SONGINFO table
+            check_song_query = """
+            SELECT songUri, songName, artistName, albumName, songLengthMs 
+            FROM SONGINFO 
+            WHERE songUri = ?
+            """
+            cursor.execute(check_song_query, (song_data['songUri'],))
+            result = cursor.fetchone()
+            
+            if not result:
+                # If the songUri is not found, insert the new song information
+                insert_song_query = """
+                INSERT INTO SONGINFO (songUri, songName, artistName, albumName)
+                VALUES (?, ?, ?, ?)
+                """
+                song_name = item['track']['name']
+                artist_name = ', '.join([artist['name'] for artist in item['track']['artists']])
+                album_name = item['track']['album']['name']
+                
+                cursor.execute(insert_song_query, (song_data['songUri'], song_name, artist_name, album_name))
+                conn.commit()
+
+            all_songs.append(song_data)
+
+        # Check if we have reached the end of the available data
+        if len(spotifyHistoricalData['items']) < 50:
+            break
+
+        # Update the timestamp to the last song's played time
+        most_recent_listening_timestamp = int(pd.to_datetime(spotifyHistoricalData['items'][-1]['played_at']).timestamp() * 1000)
+
+    # Convert the list of song data to a DataFrame
+    return pd.DataFrame(all_songs)
 
 st.set_page_config(layout="wide")
 st.title("Simmplify")
@@ -327,13 +439,20 @@ userName, userUri, userId = getUserInfo()
 useDbId = getUserId()
 storeTokensInDatabase()
 
+# Display historical data for all playlists
+historicalData = getHistoricalData(userUri)
+
+#Find most recent historical data in database, pull historical data from spotify from then till present
+spotifyHistoricalData = getSpotifyHistoricalData(userUri, historicalData)
+
+#
+
 #Get users playlists, allow user to select a playlist
 userPlaylists = spotifyUsersPlaylists(userName)
-st.markdown("## Historical Listening Data")
 
 # Add "ALL" option to the list of playlist names
 playlist_options = ["ALL"] + list(userPlaylists["name"].unique())
-selectedPlaylistName = st.selectbox("Choose Playlist", placeholder="-", options=playlist_options)
+selectedPlaylistName = st.selectbox("Filter by Playlist", placeholder="-", options=playlist_options)
 
 # Determine the selected playlist URI
 if selectedPlaylistName == "ALL":
@@ -343,29 +462,17 @@ else:
 
 st.session_state['SelectedPlaylist'] = selectedPlaylistUri
 
-# Display historical data associated with the selected playlist
-if selectedPlaylistUri:
-    historicalData = getHistoricalData(userUri, selectedPlaylistUri)
-else:
-    # Fetch all historical data if "ALL" is selected
-    historicalData = getQuery("""
-    SELECT 
-        ld.userUri, 
-        ld.playlistUri,
-        si.songName,
-        si.artistName,
-        si.albumName,
-        ld.percentageListened,
-        ld.percentageSkipped,
-        CAST(ld.listeningStartTime AS datetime) AS listeningStartTime
-    FROM LISTENERDATA ld
-    JOIN SONGINFO si ON ld.songUri = si.songUri
-    WHERE ld.userUri = ?
-    """, [userUri])
+summarizedListeningData = getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists)
+st.dataframe(summarizedListeningData, hide_index=True, use_container_width=True)
+
+st.divider()
+
+st.markdown("## Historical Listening Data")
+
 
 # Use the function to format the historical data
 historicalData = format_historical_data(historicalData, selectedPlaylistName)
-st.dataframe(historicalData, hide_index=True)
+st.dataframe(historicalData, hide_index=True, use_container_width=True)
 
 # Streamlit app - callback page
 def callback_page():

@@ -116,7 +116,7 @@ def process_playback_data(previous_playback, current_playback, user_uri):
             previous_track_length_ms = previous_playback['item']['duration_ms']
             
             # Check if within 10 seconds of the end
-            if previous_track_length_ms - previous_position_ms <= 10000:
+            if previous_track_length_ms - previous_position_ms <= 11000:
                 percentage_listened = 100.0
             else:
                 percentage_listened = (previous_position_ms / previous_track_length_ms) * 100
