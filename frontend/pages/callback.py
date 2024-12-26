@@ -362,7 +362,8 @@ def getSpotifyHistoricalData(userUri, historicalData):
     # Find the most recent listeningStartTime in the historicalData DataFrame
     if not historicalData.empty:
         most_recent_listening = historicalData['listeningStartTime'].max()
-        most_recent_listening_timestamp = int(most_recent_listening.timestamp() * 1000)
+        # Add 60 seconds to the most recent listening timestamp
+        most_recent_listening_timestamp = int((most_recent_listening + timedelta(seconds=60)).timestamp() * 1000)
     else:
         print("No Historical Data Found")
         return pd.DataFrame(columns=['playlistUri', 'songUri', 'listenedPercentage', 'skippedPercentage', 'listeningStartTime'])
@@ -385,8 +386,8 @@ def getSpotifyHistoricalData(userUri, historicalData):
             song_data = {
                 'playlistUri': item['context']['uri'] if item['context'] else None,
                 'songUri': item['track']['uri'],
-                'listenedPercentage': 100,
-                'skippedPercentage': 0,
+                'percentageListened': 100,
+                'percentageSkipped': 0,
                 'listeningStartTime': item['played_at']
             }
             
@@ -405,6 +406,7 @@ def getSpotifyHistoricalData(userUri, historicalData):
                 INSERT INTO SONGINFO (songUri, songName, artistName, albumName)
                 VALUES (?, ?, ?, ?)
                 """
+                st.write(item['track'])
                 song_name = item['track']['name']
                 artist_name = ', '.join([artist['name'] for artist in item['track']['artists']])
                 album_name = item['track']['album']['name']
@@ -422,7 +424,32 @@ def getSpotifyHistoricalData(userUri, historicalData):
         most_recent_listening_timestamp = int(pd.to_datetime(spotifyHistoricalData['items'][-1]['played_at']).timestamp() * 1000)
 
     # Convert the list of song data to a DataFrame
-    return pd.DataFrame(all_songs)
+    spotifyHistoricalData = pd.DataFrame(all_songs)
+    spotifyHistoricalData["userUri"] = userUri
+    return spotifyHistoricalData
+
+def insertSpotifyHistoricalData(spotifyHistoricalData):
+    # Ensure spotifyHistoricalData is not empty
+    if spotifyHistoricalData.empty:
+        print("No data to insert")
+        return
+
+    # Ensure the DataFrame has all required columns
+    required_columns = ['userUri', 'playlistUri', 'songUri', 'percentageListened', 'percentageSkipped', 'listeningStartTime']
+    spotifyHistoricalData = spotifyHistoricalData[required_columns]
+
+    # Convert DataFrame to a list of tuples
+    data_to_insert = list(spotifyHistoricalData.itertuples(index=False, name=None))
+
+    # Insert into LISTENERDATA table
+    insert_listener_data_query = """
+    INSERT INTO LISTENERDATA (userUri, playlistUri, songUri, percentageListened, percentageSkipped, listeningStartTime)
+    VALUES (?, ?, ?, ?, ?, ?)
+    """
+    cursor.executemany(insert_listener_data_query, data_to_insert)
+    conn.commit()
+    if len(data_to_insert) > 0:
+        st.toast(f"Found {len(data_to_insert)} songs to insert while you were away")
 
 st.set_page_config(layout="wide")
 st.title("Simmplify")
@@ -444,8 +471,7 @@ historicalData = getHistoricalData(userUri)
 
 #Find most recent historical data in database, pull historical data from spotify from then till present
 spotifyHistoricalData = getSpotifyHistoricalData(userUri, historicalData)
-
-#
+insertSpotifyHistoricalData(spotifyHistoricalData)
 
 #Get users playlists, allow user to select a playlist
 userPlaylists = spotifyUsersPlaylists(userName)
