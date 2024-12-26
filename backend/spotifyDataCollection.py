@@ -116,17 +116,17 @@ def process_playback_data(previous_playback, current_playback, user_uri):
             previous_track_length_ms = previous_playback['item']['duration_ms']
             
             # Check if within 10 seconds of the end
-            if previous_track_length_ms - previous_position_ms <= 11000:
+            if previous_track_length_ms - previous_position_ms <= 12000:
                 percentage_listened = 100.0
             else:
                 percentage_listened = (previous_position_ms / previous_track_length_ms) * 100
             
-            percentage_skipped = 100 - percentage_listened
+            percentage_skipped = 100 - int(percentage_listened)
             print(f"Calculated listening percentages: {percentage_listened:.2f}% listened, {percentage_skipped:.2f}% skipped")
             
-            # Extract playlist URI if available
-            playlist_uri = current_playback.get('context', {}).get('uri', None)
-            print(f"Playlist URI: {playlist_uri}")
+            # Extract previous playlist URI if available
+            previous_playlist_uri = previous_playback.get('context', {}).get('uri', None)
+            print(f"Previous Playlist URI: {previous_playlist_uri}")
             
             # Record the current time as the listening start time
             listening_start_time = datetime.now(pytz.utc)
@@ -155,12 +155,12 @@ def process_playback_data(previous_playback, current_playback, user_uri):
             else:
                 print(f"Song {previous_track_id} already exists in SONGINFO.")
             
-            # Insert into LISTENERDATA table
+            # Insert into LISTENERDATA table using previous_playlist_uri
             insert_listener_data_query = """
             INSERT INTO LISTENERDATA (userUri, playlistUri, songUri, percentageListened, percentageSkipped, listeningStartTime) 
             VALUES (?, ?, ?, ?, ?, ?)
             """
-            cursor.execute(insert_listener_data_query, (user_uri, playlist_uri, previous_track_id, percentage_listened, percentage_skipped, listening_start_time))
+            cursor.execute(insert_listener_data_query, (user_uri, previous_playlist_uri, previous_track_id, percentage_listened, percentage_skipped, listening_start_time))
             conn.commit()
             print(f"Processed data for track {previous_track_id}: {percentage_listened:.2f}% listened, {percentage_skipped:.2f}% skipped, started at {listening_start_time}")
 

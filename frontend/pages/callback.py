@@ -2,6 +2,7 @@ import streamlit as st
 import spotipy as sp
 from spotipy.oauth2 import SpotifyOAuth
 import os
+import numpy as np
 import requests
 import certifi
 from datetime import datetime, timedelta
@@ -10,8 +11,12 @@ from pandas import json_normalize
 import time
 import pyodbc
 import pytz
+from streamlit_extras.switch_page_button import switch_page
 
 import credentials
+
+# Set the display format for floating-point numbers to show 2 decimal places
+pd.options.display.float_format = '{:.2f}'.format
 
 # Use certifi's certificate bundle
 os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
@@ -37,7 +42,8 @@ if 'is_playing' not in st.session_state:
     st.session_state['is_playing'] = False
 if 'UserDbId' not in st.session_state:
     st.session_state['UserDbId'] = ''
-    
+if 'previous_song_name' not in st.session_state:
+    st.session_state['previous_song_name'] = None
 
 # Scopes required for accessing user's currently playing track
 SCOPE = "user-read-playback-state user-read-currently-playing"
@@ -105,22 +111,50 @@ def getUserId():
         return newUserId
 
 def login():
-    query_params = st.query_params
-    code = query_params.get("code")
+    query_params = st.query_params  # Use st.query_params directly
+    code = query_params.get("code")  # Get the code directly
 
     if code:
+        st.session_state['auth_code'] = code  # Store the code in session state
+        # Proceed with token exchange
         try:
-            # Exchange the authorization code for an access token
-            sp_oauth.get_access_token(code)  # This will cache the token internally
-            token_info = sp_oauth.get_cached_token()  # Retrieve the token info as a dictionary
-            
-            access_token = token_info['access_token']
-            expires_at_utc = datetime.fromtimestamp(token_info['expires_at'], pytz.utc)
-
-            # Store access token in session state
-            st.session_state['access_token'] = access_token
-            st.session_state["access_token_endTime"] = expires_at_utc - timedelta(minutes=3)
-            st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
+            # Check if the access token is already cached and valid
+            token_info = sp_oauth.get_cached_token()
+            if token_info and token_info['expires_at'] > int(time.time()):  # Check if token is still valid
+                st.session_state['access_token'] = token_info['access_token']
+                st.session_state["access_token_endTime"] = datetime.fromtimestamp(token_info['expires_at'], pytz.utc) - timedelta(minutes=3)
+                st.toast("You are already authenticated!")
+            else:
+                # Exchange the authorization code for an access token
+                sp_oauth.get_access_token(code)  # This will cache the token internally
+                token_info = sp_oauth.get_cached_token()  # Retrieve the token info as a dictionary
+                
+                # Store access token in session state
+                st.session_state['access_token'] = token_info['access_token']
+                st.session_state["access_token_endTime"] = datetime.fromtimestamp(token_info['expires_at'], pytz.utc) - timedelta(minutes=3)
+                st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
+        
+        except Exception as e:
+            st.warning(f"Error fetching the token: {e}")
+    elif 'auth_code' in st.session_state:
+        code = st.session_state['auth_code']  # Retrieve the code from session state
+        # Proceed with token exchange
+        try:
+            # Check if the access token is already cached and valid
+            token_info = sp_oauth.get_cached_token()
+            if token_info and token_info['expires_at'] > int(time.time()):  # Check if token is still valid
+                st.session_state['access_token'] = token_info['access_token']
+                st.session_state["access_token_endTime"] = datetime.fromtimestamp(token_info['expires_at'], pytz.utc) - timedelta(minutes=3)
+                st.toast("You are already authenticated!")
+            else:
+                # Exchange the authorization code for an access token
+                sp_oauth.get_access_token(code)  # This will cache the token internally
+                token_info = sp_oauth.get_cached_token()  # Retrieve the token info as a dictionary
+                
+                # Store access token in session state
+                st.session_state['access_token'] = token_info['access_token']
+                st.session_state["access_token_endTime"] = datetime.fromtimestamp(token_info['expires_at'], pytz.utc) - timedelta(minutes=3)
+                st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
         
         except Exception as e:
             st.warning(f"Error fetching the token: {e}")
@@ -316,17 +350,18 @@ def format_historical_data(df, playlist_name):
 
     return styled_df
 
-def getSummarizedData(historicalData, selectedPlaylistUri,userPlaylists):
+def getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists):
     if selectedPlaylistUri is not None:
         historicalData = historicalData[historicalData['playlistUri'] == selectedPlaylistUri]
     
     playlist_names = userPlaylists.set_index('uri')['name'].to_dict()
     historicalData["Playlist Name"] = historicalData['playlistUri'].map(playlist_names)
 
-    # Group by 'songName', 'artistName', 'albumName' and aggregate sums
-    summarizedData = historicalData.groupby(['Playlist Name', 'songName', 'artistName', 'albumName']).agg({
+    # Group by 'playlistUri', 'songName', 'artistName', 'albumName' and aggregate sums
+    summarizedData = historicalData.groupby(['Playlist Name', 'playlistUri', 'songName', 'artistName', 'albumName']).agg({
         'percentageListened': 'sum',
-        'percentageSkipped': 'sum'
+        'percentageSkipped': 'sum',
+        'listeningStartTime': 'count'  # Count the number of times the song has been listened to in this playlist
     }).reset_index()
 
     # Rename columns for better readability
@@ -335,11 +370,21 @@ def getSummarizedData(historicalData, selectedPlaylistUri,userPlaylists):
         'artistName': 'Artist Name',
         'albumName': 'Album Name',
         'percentageListened': 'Listened Total',
-        'percentageSkipped': 'Skipped Total'
+        'percentageSkipped': 'Skipped Total',
+        'listeningStartTime': 'Play Count'  # Rename the count column
     })
+
+    # Drop the 'playlistUri' column before returning
+    summarizedData = summarizedData.drop(columns=['playlistUri'])
 
     # Add a new column for Preference Score
     summarizedData['Preference Score'] = summarizedData['Listened Total'] - summarizedData['Skipped Total']
+
+    # Add a new column for Preference Rate
+    summarizedData['Preference Rate'] = np.round(summarizedData['Preference Score'] / summarizedData['Play Count'].replace(0, 1), 2)  # Avoid division by zero
+
+    # Format the 'Preference Rate' column to show 2 decimal places
+    summarizedData['Preference Rate'] = summarizedData['Preference Rate'].apply(lambda x: f"{x:.2f}")
 
     # Sort by Preference Score in descending order
     summarizedData = summarizedData.sort_values(by='Preference Score', ascending=True)
@@ -403,15 +448,15 @@ def getSpotifyHistoricalData(userUri, historicalData):
             if not result:
                 # If the songUri is not found, insert the new song information
                 insert_song_query = """
-                INSERT INTO SONGINFO (songUri, songName, artistName, albumName)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO SONGINFO (songUri, songName, artistName, albumName, songLengthMs)
+                VALUES (?, ?, ?, ?, ?)
                 """
-                st.write(item['track'])
                 song_name = item['track']['name']
                 artist_name = ', '.join([artist['name'] for artist in item['track']['artists']])
                 album_name = item['track']['album']['name']
+                song_length_ms = item['track']['duration_ms']  # Get the song length in milliseconds
                 
-                cursor.execute(insert_song_query, (song_data['songUri'], song_name, artist_name, album_name))
+                cursor.execute(insert_song_query, (song_data['songUri'], song_name, artist_name, album_name, song_length_ms))
                 conn.commit()
 
             all_songs.append(song_data)
@@ -460,6 +505,8 @@ player = st.empty()
 
 st.divider()
 
+st.markdown("### SIMMPLIFY Your Playlists Here")
+
 #Pull user information from database or spotify
 login()
 userName, userUri, userId = getUserInfo()
@@ -475,6 +522,10 @@ insertSpotifyHistoricalData(spotifyHistoricalData)
 
 #Get users playlists, allow user to select a playlist
 userPlaylists = spotifyUsersPlaylists(userName)
+
+# Add the "Liked Songs" playlist to the DataFrame
+liked_songs = pd.DataFrame({'uri': [f'spotify:user:{userName}:collection'], 'name': ['Liked Songs'], 'owner.display_name': [userName], 'owner.id': [userId]})
+userPlaylists = pd.concat([userPlaylists, liked_songs], ignore_index=True)
 
 # Add "ALL" option to the list of playlist names
 playlist_options = ["ALL"] + list(userPlaylists["name"].unique())
@@ -493,7 +544,7 @@ st.dataframe(summarizedListeningData, hide_index=True, use_container_width=True)
 
 st.divider()
 
-st.markdown("## Historical Listening Data")
+st.markdown("### Historical Listening Data")
 
 
 # Use the function to format the historical data
@@ -512,6 +563,9 @@ def callback_page():
             player_data = spotifyUserCurrentSongPlaying()
             if player_data is not None and not player_data.empty:
                 userCurrentSongPlayingDict = player_data.to_dict('records')[0]
+                if userCurrentSongPlayingDict["CurrentPlaylistUri"] == userName:
+                    userCurrentSongPlayingDict["CurrentPlaylistUri"] = "spotify:user:" + userName + ":collection"
+                else: userCurrentSongPlayingDict["CurrentPlaylistUri"] = "spotify:playlist:" + userCurrentSongPlayingDict["CurrentPlaylistUri"]
             else:
                 userCurrentSongPlayingDict = {
                     "name": "No song playing",
@@ -528,6 +582,10 @@ def callback_page():
             c1, c2, c3, c4 = st.columns(4)
             c1.markdown("## Player:")
             if st.session_state["is_playing"] == True:
+                if st.session_state["previous_song_name"] != userCurrentSongPlayingDict["name"]:
+                    st.session_state["previous_song_name"] = userCurrentSongPlayingDict["name"]
+                    # Switch to the callback page
+                    switch_page('callback')
                 c2.markdown(f'SONG: {userCurrentSongPlayingDict["name"]}')
                 c2.markdown(f'Artists: {",".join(userCurrentSongPlayingDict["artists"])}')
                 c2.markdown(f'Album: {userCurrentSongPlayingDict["album.name"]}')
@@ -536,8 +594,10 @@ def callback_page():
                 playlistName = userPlaylists[userPlaylists["uri"] == userCurrentSongPlayingDict["CurrentPlaylistUri"]]["name"]
                 if not playlistName.empty:
                     c2.markdown(f'Playlist: {str(playlistName.values[0])}')
+                elif userCurrentSongPlayingDict["CurrentPlaylistUri"] == userName:
+                    c2.markdown('Playlist: Liked Songs')
                 else:
-                    c2.markdown('Playlist: Unknown')
+                    c2.markdown('Playlist: Non-User Playlist')
 
                 if userCurrentSongPlayingDict["album.images"] != "":
                     c3.image(userCurrentSongPlayingDict["album.images"], width=150)
