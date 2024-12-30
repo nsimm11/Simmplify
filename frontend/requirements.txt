@@ -1,5 +1,7 @@
 spotipy
+streamlit
 pyodbc
+streamlit-extras
 pandas
 numpy
-streamlit
+
