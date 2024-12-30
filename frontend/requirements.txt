@@ -1,0 +1,5 @@
+spotipy
+pyodbc
+pandas
+numpy
+streamlit
