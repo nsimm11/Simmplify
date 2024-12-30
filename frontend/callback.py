@@ -121,7 +121,9 @@ def login():
     code = query_params.get("code")  # Get the code directly
 
     # Log the authorization code from the URL
-    print(f"Authorization code from URL: {code}")
+    st.write(f"Authorization code from URL: {code}")
+    st.write(f"Stored authorization code in session state: {st.session_state['auth_code']}")
+    
 
     if code:
         st.session_state['auth_code'] = code  # Store the code in session state
@@ -148,7 +150,7 @@ def login():
                 st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
             
             # Log the access token for debugging
-            print(f"Access Token: {st.session_state['access_token']}")  # Debugging line
+            st.write(f"Access Token post auth: {st.session_state['access_token']}")  # Debugging line
             
             # After successful authentication, retrieve user info
             getUserInfo()  # Ensure this function is called to update session state with the current user
