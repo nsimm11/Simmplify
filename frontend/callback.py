@@ -37,12 +37,8 @@ if 'UserName' not in st.session_state:
     st.session_state['UserName'] = ''
 if 'UserId' not in st.session_state:
     st.session_state['UserId'] = ''
-else:
-    st.toast(f"UserId: {st.session_state['UserId']}")   
 if 'UserUri' not in st.session_state:
     st.session_state['UserUri'] = ''
-else:
-    st.toast(f"UserUri: {st.session_state['UserUri']}")
 if 'SelectedPlaylist' not in st.session_state:
     st.session_state['SelectedPlaylist'] = ''
 if 'historicalDataDisplay' not in st.session_state:
@@ -423,7 +419,7 @@ def getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists):
 
 query_params = st.query_params  # Use st.query_params directly
 code = query_params.get("code")  # Get the code directly
-
+st.write(st.session_state['auth_code'] )
 if code == None and st.session_state['auth_code'] == None:
 
     st.markdown(
