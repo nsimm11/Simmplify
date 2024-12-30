@@ -84,6 +84,7 @@ def getQuery(query, params=None):
     
 def getUserId():
     # Ensure the correct table name and schema
+    st.toast(f"UserUri: {st.session_state['UserUri'].strip()}")
     userIdQuery = "SELECT * FROM dbo.USERS WHERE userUri = ?"
     userUri = st.session_state['UserUri'].strip()
 
@@ -436,8 +437,6 @@ if code == None and st.session_state['auth_code'] == None:
     # Step 1: Get the authentication URL
     auth_url = sp_oauth.get_authorize_url()
 
-    st.write(auth_url)
-        # Step 2: Display the link using markdown with a styled button
     st.markdown(f"""
             <div style="display: flex; justify-content: center;">
                 <a href="{auth_url}">
