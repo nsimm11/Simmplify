@@ -18,7 +18,6 @@ st.set_page_config(
     page_icon=":musical_note:"
 )
 
-
 # Set the display format for floating-point numbers to show 2 decimal places
 pd.options.display.float_format = '{:.2f}'.format
 
@@ -38,8 +37,12 @@ if 'UserName' not in st.session_state:
     st.session_state['UserName'] = ''
 if 'UserId' not in st.session_state:
     st.session_state['UserId'] = ''
+else:
+    st.toast(f"UserId: {st.session_state['UserId']}")   
 if 'UserUri' not in st.session_state:
     st.session_state['UserUri'] = ''
+else:
+    st.toast(f"UserUri: {st.session_state['UserUri']}")
 if 'SelectedPlaylist' not in st.session_state:
     st.session_state['SelectedPlaylist'] = ''
 if 'historicalDataDisplay' not in st.session_state:
