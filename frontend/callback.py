@@ -12,6 +12,9 @@ import pyodbc
 import pytz
 from streamlit_extras.switch_page_button import switch_page
 
+# Clear session state at the start of the script
+st.session_state.clear()  # Clear the session state
+
 st.set_page_config(
     layout="wide", 
     page_title="SIMMPLIFY",
@@ -24,7 +27,7 @@ pd.options.display.float_format = '{:.2f}'.format
 # Use certifi's certificate bundle
 os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
 
-#Setup session State
+# Setup session State
 if 'auth_code' not in st.session_state:
     st.session_state['auth_code'] = None
 if 'access_token' not in st.session_state:
@@ -117,7 +120,6 @@ def getUserId():
         return newUserId
 
 def login():
-    st.session_state.clear()  # Clear the session state
     query_params = st.query_params  # Use st.query_params directly
     code = query_params.get("code")  # Get the code directly
 
