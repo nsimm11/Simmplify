@@ -124,12 +124,12 @@ def login():
     code = query_params.get("code")  # Get the code directly
 
     # Log the authorization code from the URL
-    print(f"Authorization code from URL: {code}")
+    st.write(f"Authorization code from URL: {code}")
 
     if code:
         # Store the code in session state
         st.session_state['auth_code'] = code  
-        print(f"Stored authorization code in session state: {st.session_state['auth_code']}")
+        st.write(f"Stored authorization code in session state: {st.session_state['auth_code']}")
 
         # Proceed with token exchange
         try:
@@ -147,11 +147,6 @@ def login():
 
         except Exception as e:
             st.warning(f"Error fetching the token: {e}")
-    elif 'auth_code' in st.session_state:
-        # If the auth code is already in session state, proceed with token exchange
-        print(f"Using stored authorization code: {st.session_state['auth_code']}")
-        getUserInfo()  # Ensure this function is called to update session state with the current user
-
     else:
         st.warning("Authorization code not found in URL. Please try again.")
 
