@@ -117,6 +117,7 @@ def getUserId():
         return newUserId
 
 def login():
+    st.session_state.clear()  # Clear the session state
     query_params = st.query_params  # Use st.query_params directly
     code = query_params.get("code")  # Get the code directly
 
