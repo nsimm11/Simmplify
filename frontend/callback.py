@@ -166,12 +166,6 @@ def getUserInfo():
             return
 
         userUri = requestsAsJsonUser["uri"]
-        
-        # Check if the userUri matches the one in session state
-        if 'UserUri' in st.session_state and st.session_state['UserUri'] != userUri:
-            errorLog(f"UserUri mismatch: Expected {st.session_state['UserUri']}, but got {userUri}")
-            st.warning("User information does not match the current session. Please log in again.")
-            return
 
         st.session_state["UserName"] = str(requestsAsJsonUser["display_name"])
         st.session_state["UserUri"] = userUri
