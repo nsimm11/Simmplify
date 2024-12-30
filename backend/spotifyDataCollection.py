@@ -164,9 +164,122 @@ def process_playback_data(previous_playback, current_playback, user_uri):
             conn.commit()
             print(f"Processed data for track {previous_track_id}: {percentage_listened:.2f}% listened, {percentage_skipped:.2f}% skipped, started at {listening_start_time}")
 
+def getSpotifyHistoricalData(userUri, historicalData):
+    # Find the most recent listeningStartTime in the historicalData DataFrame
+    if not historicalData.empty:
+        most_recent_listening = historicalData['listeningStartTime'].max()
+        # Add 60 seconds to the most recent listening timestamp
+        most_recent_listening_timestamp = int((most_recent_listening + timedelta(seconds=60)).timestamp() * 1000)
+    else:
+        print("No Historical Data Found")
+        return pd.DataFrame(columns=['playlistUri', 'songUri', 'listenedPercentage', 'skippedPercentage', 'listeningStartTime'])
+
+    all_songs = []
+    liked_songs_uri = f'spotify:user:{userUri}:collection'  # Define the Liked Songs URI
+
+    while True:
+        # Fetch historical data from Spotify since the most recent listeningStartTime
+        spotifyHistoricalData = submitRequest(
+            "https://api.spotify.com/v1/me/player/recently-played", 
+            "Get Users Recently Played", 
+            {"after": most_recent_listening_timestamp, "limit": 50}
+        )
+
+        if not spotifyHistoricalData or 'items' not in spotifyHistoricalData:
+            print("No more data to fetch")
+            break
+
+        # Process each song and append to the all_songs list
+        for item in spotifyHistoricalData['items']:
+            song_data = {
+                'playlistUri': liked_songs_uri if item['context'] is None else item['context']['uri'],
+                'songUri': item['track']['uri'],
+                'percentageListened': 100,
+                'percentageSkipped': 0,
+                'listeningStartTime': item['played_at']
+            }
+
+            # Check if the songUri is already in the SONGINFO table
+            check_song_query = """
+            SELECT songUri, songName, artistName, albumName, songLengthMs 
+            FROM SONGINFO 
+            WHERE songUri = ?
+            """
+            cursor.execute(check_song_query, (song_data['songUri'],))
+            result = cursor.fetchone()
+            
+            if not result:
+                # If the songUri is not found, insert the new song information
+                insert_song_query = """
+                INSERT INTO SONGINFO (songUri, songName, artistName, albumName, songLengthMs)
+                VALUES (?, ?, ?, ?, ?)
+                """
+                song_name = item['track']['name']
+                artist_name = ', '.join([artist['name'] for artist in item['track']['artists']])
+                album_name = item['track']['album']['name']
+                song_length_ms = item['track']['duration_ms']  # Get the song length in milliseconds
+                
+                cursor.execute(insert_song_query, (song_data['songUri'], song_name, artist_name, album_name, song_length_ms))
+                conn.commit()
+
+            # Check for unique listeningStartTime before adding to all_songs
+            if song_data['listeningStartTime'] not in [s['listeningStartTime'] for s in all_songs]:
+                all_songs.append(song_data)
+
+        # Check if we have reached the end of the available data
+        if len(spotifyHistoricalData['items']) < 50:
+            break
+
+        # Update the timestamp to the 'after' timestamp from the cursor in the API response
+        if 'cursors' in spotifyHistoricalData and 'after' in spotifyHistoricalData['cursors']:
+            most_recent_listening_timestamp = int(spotifyHistoricalData['cursors']['after'])
+
+    # Convert the list of song data to a DataFrame
+    spotifyHistoricalData = pd.DataFrame(all_songs)
+    spotifyHistoricalData["userUri"] = userUri
+    return spotifyHistoricalData
+
+def insertSpotifyHistoricalData(spotifyHistoricalData):
+    # Ensure spotifyHistoricalData is not empty
+    if spotifyHistoricalData.empty:
+        print("No data to insert")
+        return
+
+    # Ensure the DataFrame has all required columns
+    required_columns = ['userUri', 'playlistUri', 'songUri', 'percentageListened', 'percentageSkipped', 'listeningStartTime']
+    spotifyHistoricalData = spotifyHistoricalData[required_columns]
+
+    # Convert DataFrame to a list of tuples
+    data_to_insert = list(spotifyHistoricalData.itertuples(index=False, name=None))
+
+    # Insert into LISTENERDATA table
+    insert_listener_data_query = """
+    INSERT INTO LISTENERDATA (userUri, playlistUri, songUri, percentageListened, percentageSkipped, listeningStartTime)
+    VALUES (?, ?, ?, ?, ?, ?)
+    """
+
+    for record in data_to_insert:
+        # Check if the record already exists
+        check_existing_query = """
+        SELECT COUNT(*) FROM LISTENERDATA 
+        WHERE userUri = ? AND playlistUri = ? AND songUri = ? AND listeningStartTime = ?
+        """
+        cursor.execute(check_existing_query, (record[0], record[1], record[2], record[5]))
+        exists = cursor.fetchone()[0]
+
+        if not exists:
+            cursor.execute(insert_listener_data_query, record)
+
+    conn.commit()
+    if len(data_to_insert) > 0:
+        print(f"Found {len(data_to_insert)} songs to insert while you were away")
+
+
 # Schedule this function to run periodically
 def run_periodically(default_interval=10, inactive_interval=120):  # Default check every 10 seconds, inactive every 2 minutes
     next_check_time = {}
+    max_inactive_interval = 1200  # 20 minutes in seconds
+    inactive_users = set()  # Track inactive users
 
     while True:
         users = refresh_access_tokens()
@@ -192,12 +305,29 @@ def run_periodically(default_interval=10, inactive_interval=120):  # Default che
             # Update the previous playback data
             previous_playback_data[user_uri] = current_playback
 
-            # Set the next check time based on playback activity
-            if current_playback is None:
+            # Check if user is inactive
+            if current_playback is None or bool(current_playback['is_playing']) == False:
                 print(f"User {user_uri} is inactive. Setting next check time to {inactive_interval} seconds.")
                 next_check_time[user_uri] = current_time + inactive_interval
+                inactive_users.add(user_uri)  # Mark user as inactive
+                
+                # Increase inactive interval by 2 minutes, up to a maximum of 20 minutes
+                inactive_interval = min(inactive_interval + 120, max_inactive_interval)
             else:
+                # User is active, reset inactive interval
                 next_check_time[user_uri] = current_time + default_interval
+
+                # Check if the user was previously inactive
+                if user_uri in inactive_users:
+                    print(f"User {user_uri} has returned from inactivity. Fetching historical data.")
+                    # Call the function to get historical data
+                    historical_data = getSpotifyHistoricalData(user_uri, pd.DataFrame())
+                    # Insert the historical data into the database
+                    insertSpotifyHistoricalData(historical_data)
+
+                    print(f"Historical Data: {historical_data}")
+
+                    inactive_users.remove(user_uri)  # Remove user from inactive set
 
         # Sleep for a short time to prevent a tight loop
         time.sleep(5)

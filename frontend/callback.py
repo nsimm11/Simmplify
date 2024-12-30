@@ -15,6 +15,9 @@ from streamlit_extras.switch_page_button import switch_page
 
 import credentials
 
+st.set_page_config(layout="wide")
+
+
 # Set the display format for floating-point numbers to show 2 decimal places
 pd.options.display.float_format = '{:.2f}'.format
 
@@ -22,6 +25,8 @@ pd.options.display.float_format = '{:.2f}'.format
 os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
 
 #Setup session State
+if 'auth_code' not in st.session_state:
+    st.session_state['auth_code'] = None
 if 'access_token' not in st.session_state:
     st.session_state['access_token'] = ''
 if 'access_token_endTime' not in st.session_state:
@@ -160,6 +165,8 @@ def login():
             st.warning(f"Error fetching the token: {e}")
     else:
         st.warning("Authorization code not found in URL. Please try again.")
+
+
 
 def getUserInfo():
     try:
@@ -351,11 +358,15 @@ def format_historical_data(df, playlist_name):
     return styled_df
 
 def getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists):
+    
     if selectedPlaylistUri is not None:
         historicalData = historicalData[historicalData['playlistUri'] == selectedPlaylistUri]
     
     playlist_names = userPlaylists.set_index('uri')['name'].to_dict()
-    historicalData["Playlist Name"] = historicalData['playlistUri'].map(playlist_names)
+
+    if "playlistUri" in historicalData.columns:
+        historicalData["Playlist Name"] = historicalData['playlistUri'].map(playlist_names)
+
 
     # Group by 'playlistUri', 'songName', 'artistName', 'albumName' and aggregate sums
     summarizedData = historicalData.groupby(['Playlist Name', 'playlistUri', 'songName', 'artistName', 'albumName']).agg({
@@ -403,163 +414,138 @@ def getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists):
 
     return styled_summarizedData
 
-def getSpotifyHistoricalData(userUri, historicalData):
-    # Find the most recent listeningStartTime in the historicalData DataFrame
-    if not historicalData.empty:
-        most_recent_listening = historicalData['listeningStartTime'].max()
-        # Add 60 seconds to the most recent listening timestamp
-        most_recent_listening_timestamp = int((most_recent_listening + timedelta(seconds=60)).timestamp() * 1000)
-    else:
-        print("No Historical Data Found")
-        return pd.DataFrame(columns=['playlistUri', 'songUri', 'listenedPercentage', 'skippedPercentage', 'listeningStartTime'])
 
-    all_songs = []
-    while True:
-        # Fetch historical data from Spotify since the most recent listeningStartTime
-        spotifyHistoricalData = submitRequest(
-            "https://api.spotify.com/v1/me/player/recently-played", 
-            "Get Users Recently Played", 
-            {"after": most_recent_listening_timestamp, "limit": 50}
-        )
 
-        if not spotifyHistoricalData or 'items' not in spotifyHistoricalData:
-            print("No more data to fetch")
-            break
+query_params = st.query_params  # Use st.query_params directly
+code = query_params.get("code")  # Get the code directly
 
-        # Process each song and append to the all_songs list
-        for item in spotifyHistoricalData['items']:
-            song_data = {
-                'playlistUri': item['context']['uri'] if item['context'] else None,
-                'songUri': item['track']['uri'],
-                'percentageListened': 100,
-                'percentageSkipped': 0,
-                'listeningStartTime': item['played_at']
+if code == None and st.session_state['auth_code'] == None:
+
+    # New landing page design for Simmplify
+    st.markdown("""
+        <style>
+            .header {
+                text-align: center;
+                color: #1DB954; /* Spotify green */
+                font-size: 3em;
+                margin-bottom: 20px;
             }
-            
-            # Check if the songUri is already in the SONGINFO table
-            check_song_query = """
-            SELECT songUri, songName, artistName, albumName, songLengthMs 
-            FROM SONGINFO 
-            WHERE songUri = ?
-            """
-            cursor.execute(check_song_query, (song_data['songUri'],))
-            result = cursor.fetchone()
-            
-            if not result:
-                # If the songUri is not found, insert the new song information
-                insert_song_query = """
-                INSERT INTO SONGINFO (songUri, songName, artistName, albumName, songLengthMs)
-                VALUES (?, ?, ?, ?, ?)
-                """
-                song_name = item['track']['name']
-                artist_name = ', '.join([artist['name'] for artist in item['track']['artists']])
-                album_name = item['track']['album']['name']
-                song_length_ms = item['track']['duration_ms']  # Get the song length in milliseconds
-                
-                cursor.execute(insert_song_query, (song_data['songUri'], song_name, artist_name, album_name, song_length_ms))
-                conn.commit()
+            .description {
+                text-align: center;
+                font-size: 1.2em;
+                margin-bottom: 40px;
+                color: #333;
+            }
+            .button {
+                display: block;
+                margin: 0 auto;
+                padding: 15px 30px;
+                font-size: 1.2em;
+                color: white;
+                background-color: #1DB954; /* Spotify green */
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                transition: background-color 0.3s;
+            }
+            .button:hover {
+                background-color: #1ed760; /* Lighter green on hover */
+            }
+        </style>
+        <div class="header">Simmplify</div>
+        <div class="description">
+            <p>Automatically delete out underplayed songs on your playlists!</p>
+            <p>Get started by authenticating with your Spotify account below</p>
+        </div>
+    """, unsafe_allow_html=True)
 
-            all_songs.append(song_data)
+    # Step 1: Get the authentication URL
+    auth_url = sp_oauth.get_authorize_url()
+    # Step 2: Display the link using markdown with a styled button
+    st.markdown(f"""
+        <a href="{auth_url}" target="_self">
+            <button class="button">Authenticate with Spotify</button>
+        </a>
+    """, unsafe_allow_html=True)
 
-        # Check if we have reached the end of the available data
-        if len(spotifyHistoricalData['items']) < 50:
-            break
-
-        # Update the timestamp to the last song's played time
-        most_recent_listening_timestamp = int(pd.to_datetime(spotifyHistoricalData['items'][-1]['played_at']).timestamp() * 1000)
-
-    # Convert the list of song data to a DataFrame
-    spotifyHistoricalData = pd.DataFrame(all_songs)
-    spotifyHistoricalData["userUri"] = userUri
-    return spotifyHistoricalData
-
-def insertSpotifyHistoricalData(spotifyHistoricalData):
-    # Ensure spotifyHistoricalData is not empty
-    if spotifyHistoricalData.empty:
-        print("No data to insert")
-        return
-
-    # Ensure the DataFrame has all required columns
-    required_columns = ['userUri', 'playlistUri', 'songUri', 'percentageListened', 'percentageSkipped', 'listeningStartTime']
-    spotifyHistoricalData = spotifyHistoricalData[required_columns]
-
-    # Convert DataFrame to a list of tuples
-    data_to_insert = list(spotifyHistoricalData.itertuples(index=False, name=None))
-
-    # Insert into LISTENERDATA table
-    insert_listener_data_query = """
-    INSERT INTO LISTENERDATA (userUri, playlistUri, songUri, percentageListened, percentageSkipped, listeningStartTime)
-    VALUES (?, ?, ?, ?, ?, ?)
-    """
-    cursor.executemany(insert_listener_data_query, data_to_insert)
-    conn.commit()
-    if len(data_to_insert) > 0:
-        st.toast(f"Found {len(data_to_insert)} songs to insert while you were away")
-
-st.set_page_config(layout="wide")
-st.title("Simmplify")
-
-st.divider()
-
-player = st.empty()
-
-st.divider()
-
-st.markdown("### SIMMPLIFY Your Playlists Here")
-
-#Pull user information from database or spotify
-login()
-userName, userUri, userId = getUserInfo()
-useDbId = getUserId()
-storeTokensInDatabase()
-
-# Display historical data for all playlists
-historicalData = getHistoricalData(userUri)
-
-#Find most recent historical data in database, pull historical data from spotify from then till present
-spotifyHistoricalData = getSpotifyHistoricalData(userUri, historicalData)
-insertSpotifyHistoricalData(spotifyHistoricalData)
-
-#Get users playlists, allow user to select a playlist
-userPlaylists = spotifyUsersPlaylists(userName)
-
-# Add the "Liked Songs" playlist to the DataFrame
-liked_songs = pd.DataFrame({'uri': [f'spotify:user:{userName}:collection'], 'name': ['Liked Songs'], 'owner.display_name': [userName], 'owner.id': [userId]})
-userPlaylists = pd.concat([userPlaylists, liked_songs], ignore_index=True)
-
-# Add "ALL" option to the list of playlist names
-playlist_options = ["ALL"] + list(userPlaylists["name"].unique())
-selectedPlaylistName = st.selectbox("Filter by Playlist", placeholder="-", options=playlist_options)
-
-# Determine the selected playlist URI
-if selectedPlaylistName == "ALL":
-    selectedPlaylistUri = None  # No filtering by playlist
 else:
-    selectedPlaylistUri = userPlaylists[userPlaylists["name"] == selectedPlaylistName]["uri"].values[0]
+    #After authentication, display the player and simmplify page
+    
+    st.markdown("""
+        <div style="text-align: center; margin-top: 10px;">
+            <h1 style="color: #1DB954; font-size: 4em; margin-bottom: 10px;">Simmplify</h1>
+            <p style="font-size: 1.5em; color: #FFFFFF;">Track your habits and declutter your playlists to enjoy your favourite songs, more often!</p>
+            <hr style="border: 1px solid #1DB954; width: 100%; margin: 20px auto;" />
+        </div>
+    """, unsafe_allow_html=True)
 
-st.session_state['SelectedPlaylist'] = selectedPlaylistUri
+    st.session_state['auth_code'] = code
 
-summarizedListeningData = getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists)
-st.dataframe(summarizedListeningData, hide_index=True, use_container_width=True)
+    # Call the login function at the start of the script
+    login()
 
-st.divider()
+    st.markdown(
+        """<div style="text-align: left">
+            <h3 style="color: #1DB954; font-size: 2em;">Player:</h3>
+        </div>""", unsafe_allow_html=True)
+    player = st.empty()
+    
 
-st.markdown("### Historical Listening Data")
+    st.markdown("""
+        <div style="text-align: left">
+            <hr style="border: 1px solid #1DB954; width: 100%" />
+            <h3 style="color: #1DB954; font-size: 2em;">Simmplify Data:</h3>
+        </div>
+    """, unsafe_allow_html=True)
+
+    #Pull user information from database or spotify
+    userName, userUri, userId = getUserInfo()
+    useDbId = getUserId()
+    storeTokensInDatabase()
+
+    # Display historical data for all playlists
+    historicalData = getHistoricalData(userUri)
 
 
-# Use the function to format the historical data
-historicalData = format_historical_data(historicalData, selectedPlaylistName)
-st.dataframe(historicalData, hide_index=True, use_container_width=True)
+    #Get users playlists, allow user to select a playlist
+    userPlaylists = spotifyUsersPlaylists(userName)
 
-# Streamlit app - callback page
-def callback_page():
+    # Add the "Liked Songs" playlist to the DataFrame
+    liked_songs = pd.DataFrame({'uri': [f'spotify:user:{userName}:collection'], 'name': ['Liked Songs'], 'owner.display_name': [userName], 'owner.id': [userId]})
+    userPlaylists = pd.concat([userPlaylists, liked_songs], ignore_index=True)
+
+    # Add "ALL" option to the list of playlist names
+    playlist_options = ["ALL"] + list(userPlaylists["name"].unique())
+    sde1, sde2, sde3 = st.columns(3)
+    selectedPlaylistName = sde1.selectbox("Filter by Playlist", placeholder="-", options=playlist_options)
+    #selectedPlaylistName = sde2.slider(1,10)
+    #songCountFilter = sde3.slider(1,10)
+
+
+    simmplify = st.empty()
+
+    if selectedPlaylistName == "ALL":
+        selectedPlaylistUri = None  # No filtering by playlist
+    else:
+        selectedPlaylistUri = userPlaylists[userPlaylists["name"] == selectedPlaylistName]["uri"].values[0]
+
+    st.session_state['SelectedPlaylist'] = selectedPlaylistUri
+
+    summarizedListeningData = getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists)
+
+    historicalData = format_historical_data(historicalData, selectedPlaylistName)
+    
+    st.divider()
+
+    st.markdown("### Historical Listening Data")
+
+    historical = st.empty()
 
     startTime = datetime.now(pytz.utc)
 
     while True:
     
         if (datetime.now(pytz.utc) - startTime).total_seconds() % 10 < 1:
-            login()
             player_data = spotifyUserCurrentSongPlaying()
             if player_data is not None and not player_data.empty:
                 userCurrentSongPlayingDict = player_data.to_dict('records')[0]
@@ -580,12 +566,14 @@ def callback_page():
 
         with player.container():
             c1, c2, c3, c4 = st.columns(4)
-            c1.markdown("## Player:")
+
             if st.session_state["is_playing"] == True:
                 if st.session_state["previous_song_name"] != userCurrentSongPlayingDict["name"]:
                     st.session_state["previous_song_name"] = userCurrentSongPlayingDict["name"]
-                    # Switch to the callback page
-                    switch_page('callback')
+                    historicalData = getHistoricalData(userUri)
+                    summarizedListeningData = getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists)
+                    historicalData = format_historical_data(historicalData, selectedPlaylistName)
+
                 c2.markdown(f'SONG: {userCurrentSongPlayingDict["name"]}')
                 c2.markdown(f'Artists: {",".join(userCurrentSongPlayingDict["artists"])}')
                 c2.markdown(f'Album: {userCurrentSongPlayingDict["album.name"]}')
@@ -602,13 +590,16 @@ def callback_page():
                 if userCurrentSongPlayingDict["album.images"] != "":
                     c3.image(userCurrentSongPlayingDict["album.images"], width=150)
                 c2.progress(float(userCurrentSongPlayingDict["SongCurrentPosition"]) / userCurrentSongPlayingDict["duration_ms"])
-                c4.markdown(f"Welcome: {st.session_state['UserName']}")
+                c1.markdown(f"User: {st.session_state['UserName']}")
             else:
                 c2.markdown("## Paused")
+
+        with simmplify.container():
+            st.dataframe(summarizedListeningData, hide_index=True, use_container_width=True)
+
+        with historical.container():
+            st.dataframe(historicalData, hide_index=True, use_container_width=True)
         
 
         time.sleep(1)
 
-
-if __name__ == "__main__":
-    callback_page()
