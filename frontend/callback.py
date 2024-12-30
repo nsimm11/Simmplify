@@ -419,7 +419,6 @@ def getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists):
 
 query_params = st.query_params  # Use st.query_params directly
 code = query_params.get("code")  # Get the code directly
-st.write(st.session_state['auth_code'] )
 if code == None and st.session_state['auth_code'] == None:
 
     st.markdown(
@@ -482,8 +481,6 @@ else:
             <hr style="border: 1px solid #1DB954; width: 100%; margin: 20px auto;" />
         </div>
     """, unsafe_allow_html=True)
-
-    st.session_state['auth_code'] = code
 
     # Call the login function at the start of the script
     login()
