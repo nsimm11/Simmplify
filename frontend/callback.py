@@ -138,12 +138,10 @@ def login():
             st.session_state['access_token'] = token_info['access_token']
             st.session_state["access_token_endTime"] = datetime.fromtimestamp(token_info['expires_at'], pytz.utc) - timedelta(minutes=3)
             st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
-            
-            # Log the access token for debugging
-            print(f"Access Token: {st.session_state['access_token']}")  # Debugging line
+    
             
             # After successful authentication, retrieve user info
-            getUserInfo()  # Ensure this function is called to update session state with the current user
+            st.write(getUserInfo())  # Ensure this function is called to update session state with the current user
 
         except Exception as e:
             st.warning(f"Error fetching the token: {e}")
@@ -403,8 +401,8 @@ def getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists):
 
 query_params = st.query_params  # Use st.query_params directly
 code = query_params.get("code")  # Get the code directly
-if code == None and st.session_state['auth_code'] == None:
 
+if code == None and st.session_state['auth_code'] == None:
     st.markdown(
         
             """
