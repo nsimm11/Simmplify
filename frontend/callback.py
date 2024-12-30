@@ -415,7 +415,7 @@ if code == None and st.session_state['auth_code'] == None:
         )
 
     # Step 1: Get the authentication URL
-    auth_url = sp_oauth.get_authorize_url(prompt='login')
+    auth_url = sp_oauth.get_authorize_url()
 
     st.markdown(f"""
             <div style="display: flex; justify-content: center;">
