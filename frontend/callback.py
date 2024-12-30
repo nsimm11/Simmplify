@@ -123,32 +123,36 @@ def login():
     query_params = st.query_params  # Use st.query_params directly
     code = query_params.get("code")  # Get the code directly
 
-    # Log the authorization code from the URL
-    st.write(f"Authorization code from URL: {code}")
-
     if code:
         # Store the code in session state
         st.session_state['auth_code'] = code  
-        st.write(f"Stored authorization code in session state: {st.session_state['auth_code']}")
 
-        # Proceed with token exchange
-        try:
-            # Always attempt to exchange the authorization code for a new access token
-            token_info = sp_oauth.get_access_token(code)  # This will cache the token internally
-            st.session_state['access_token'] = token_info['access_token']
-            st.session_state["access_token_endTime"] = datetime.fromtimestamp(token_info['expires_at'], pytz.utc) - timedelta(minutes=3)
-            st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
-    
-            
-            # After successful authentication, retrieve user info
-            st.write(getUserInfo())  # Ensure this function is called to update session state with the current user
+        # Proceed with token exchange using the new function
+        exchange_code_for_token(code)  # Call the new function to exchange the code for a token
 
-        except Exception as e:
-            st.warning(f"Error fetching the token: {e}")
+
     else:
         st.warning("Authorization code not found in URL. Please try again.")
 
-
+def exchange_code_for_token(code):
+    token_url = "https://accounts.spotify.com/api/token"
+    payload = {
+        'grant_type': 'authorization_code',
+        'code': code,
+        'redirect_uri': st.secrets["REDIRECT_URI"],
+        'client_id': st.secrets["CLIENT_ID"],
+        'client_secret': st.secrets["CLIENT_SECRET"]
+    }
+    
+    response = requests.post(token_url, data=payload)
+    
+    if response.status_code == 200:
+        token_info = response.json()
+        st.session_state['access_token'] = token_info['access_token']
+        st.session_state["access_token_endTime"] = datetime.now(pytz.utc) + timedelta(seconds=token_info['expires_in'])
+        st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
+    else:
+        st.warning(f"Error fetching the token: {response.status_code} - {response.text}")
 
 def getUserInfo():
     try:
@@ -419,7 +423,7 @@ if code == None and st.session_state['auth_code'] == None:
 
     st.markdown(f"""
             <div style="display: flex; justify-content: center;">
-                <a href="{auth_url}">
+                <a href="{auth_url}" target="_self">
                     <button class="button" style="background-color: #1DB954; text-align: center; color: #FFFFFF; border: none; padding: 15px 30px; font-size: 1rem; border-radius: 25px; cursor: pointer;">
                         Authenticate with Spotify
                     </button>
