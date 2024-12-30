@@ -164,6 +164,31 @@ def process_playback_data(previous_playback, current_playback, user_uri):
             conn.commit()
             print(f"Processed data for track {previous_track_id}: {percentage_listened:.2f}% listened, {percentage_skipped:.2f}% skipped, started at {listening_start_time}")
 
+#General Request call for Spotify
+def submitRequest(endpoint, functionName, params):
+
+    # Get the access token from the SpotifyOAuth object
+    token_info = sp_oauth.get_cached_token()
+    access_token = token_info['access_token']
+
+    # Define the endpoint for currently playing track
+    headers = {
+    "Authorization": f"Bearer {access_token}"}   
+
+    response = requests.get(endpoint, headers=headers, params=params)
+
+    # Check if the response is successful
+    if response.status_code == 200:
+        current_response = response.json()
+    else:
+        print(f"error: {functionName}, {response.status_code}")
+        current_response = None
+    
+    if current_response is not None:
+        return current_response
+    
+    return None
+
 def getSpotifyHistoricalData(userUri, historicalData):
     # Find the most recent listeningStartTime in the historicalData DataFrame
     if not historicalData.empty:
@@ -276,10 +301,13 @@ def insertSpotifyHistoricalData(spotifyHistoricalData):
 
 
 # Schedule this function to run periodically
-def run_periodically(default_interval=10, inactive_interval=120):  # Default check every 10 seconds, inactive every 2 minutes
+def run_periodically(default_interval=10, inactive_interval=60):  # Default check every 10 seconds, inactive every 1 minutes
     next_check_time = {}
-    max_inactive_interval = 1200  # 20 minutes in seconds
+    max_inactive_interval = 609  # 10 minutes in seconds
     inactive_users = set()  # Track inactive users
+    inactive_intervals = {}  # Track inactive intervals for each user
+
+    first_run = True
 
     while True:
         users = refresh_access_tokens()
@@ -290,6 +318,12 @@ def run_periodically(default_interval=10, inactive_interval=120):  # Default che
             # Check if it's time to process this user's playback data
             if user_uri in next_check_time and current_time < next_check_time[user_uri]:
                 continue
+
+            if first_run:
+                historical_data = getSpotifyHistoricalData(user_uri, pd.DataFrame())
+                # Insert the historical data into the database
+                insertSpotifyHistoricalData(historical_data)
+
 
             print(f"Processing playback data for user {user_uri}")
             
@@ -312,7 +346,7 @@ def run_periodically(default_interval=10, inactive_interval=120):  # Default che
                 inactive_users.add(user_uri)  # Mark user as inactive
                 
                 # Increase inactive interval by 2 minutes, up to a maximum of 20 minutes
-                inactive_interval = min(inactive_interval + 120, max_inactive_interval)
+                inactive_intervals[user_uri] = min(inactive_intervals.get(user_uri, inactive_interval) + 60, max_inactive_interval)
             else:
                 # User is active, reset inactive interval
                 next_check_time[user_uri] = current_time + default_interval
@@ -329,9 +363,14 @@ def run_periodically(default_interval=10, inactive_interval=120):  # Default che
 
                     inactive_users.remove(user_uri)  # Remove user from inactive set
 
+                    next_check_time[user_uri] = current_time + inactive_intervals.get(user_uri, inactive_interval)
+
         # Sleep for a short time to prevent a tight loop
+        if first_run:
+            first_run = False
         time.sleep(5)
 
 if __name__ == "__main__":
+
     run_periodically()
 

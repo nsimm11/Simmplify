@@ -15,7 +15,11 @@ from streamlit_extras.switch_page_button import switch_page
 
 import credentials
 
-st.set_page_config(layout="wide")
+st.set_page_config(
+    layout="wide", 
+    page_title="SIMMPLIFY",
+    page_icon=":musical_note:"
+)
 
 
 # Set the display format for floating-point numbers to show 2 decimal places
@@ -318,6 +322,9 @@ def getHistoricalData(userUri):
     return historicalData
 
 def format_historical_data(df, playlist_name):
+    #Limit to the last 150 rows since the data will become too large to display
+    df = df.iloc[-150:]
+    
     # Add playlist name to the DataFrame
     if playlist_name != "ALL":
         df['Playlist Name'] = playlist_name
@@ -394,12 +401,9 @@ def getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists):
     # Add a new column for Preference Rate
     summarizedData['Preference Rate'] = np.round(summarizedData['Preference Score'] / summarizedData['Play Count'].replace(0, 1), 2)  # Avoid division by zero
 
-    # Format the 'Preference Rate' column to show 2 decimal places
-    summarizedData['Preference Rate'] = summarizedData['Preference Rate'].apply(lambda x: f"{x:.2f}")
-
-    # Sort by Preference Score in descending order
-    summarizedData = summarizedData.sort_values(by='Preference Score', ascending=True)
-
+    # Sort by Preference Rate with negative values first, then 0 to 100, and finally 100
+    summarizedData['Preference Rate'] = summarizedData['Preference Rate'].astype(int)  # Ensure it's float for proper sorting
+    summarizedData = summarizedData.sort_values(by='Preference Rate', ascending=True)  # Sort in ascending order
     # Apply conditional formatting based on Preference Score
     def highlight_row(row):
         score = row['Preference Score']
@@ -421,52 +425,55 @@ code = query_params.get("code")  # Get the code directly
 
 if code == None and st.session_state['auth_code'] == None:
 
-    # New landing page design for Simmplify
-    st.markdown("""
-        <style>
-            .header {
-                text-align: center;
-                color: #1DB954; /* Spotify green */
-                font-size: 3em;
-                margin-bottom: 20px;
-            }
-            .description {
-                text-align: center;
-                font-size: 1.2em;
-                margin-bottom: 40px;
-                color: #333;
-            }
-            .button {
-                display: block;
-                margin: 0 auto;
-                padding: 15px 30px;
-                font-size: 1.2em;
-                color: white;
-                background-color: #1DB954; /* Spotify green */
-                border: none;
-                border-radius: 5px;
-                cursor: pointer;
-                transition: background-color 0.3s;
-            }
-            .button:hover {
-                background-color: #1ed760; /* Lighter green on hover */
-            }
-        </style>
-        <div class="header">Simmplify</div>
-        <div class="description">
-            <p>Automatically delete out underplayed songs on your playlists!</p>
-            <p>Get started by authenticating with your Spotify account below</p>
-        </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        
+            """
+            <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
+            <h1 style="font-size: 4rem; margin: 0; color: #1DB954;">SIMMPLIFY</h1>
+            <p style="font-size: 1.5rem;">Track your habits and declutter your playlists to enjoy your favourite songs, more often!</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
     # Step 1: Get the authentication URL
     auth_url = sp_oauth.get_authorize_url()
-    # Step 2: Display the link using markdown with a styled button
+        # Step 2: Display the link using markdown with a styled button
     st.markdown(f"""
-        <a href="{auth_url}" target="_self">
-            <button class="button">Authenticate with Spotify</button>
-        </a>
-    """, unsafe_allow_html=True)
+            <div style="display: flex; justify-content: center;">
+                <a href="{auth_url}" target="_self">
+                    <button class="button" style="background-color: #1DB954; text-align: center; color: #FFFFFF; border: none; padding: 15px 30px; font-size: 1rem; border-radius: 25px; cursor: pointer;">
+                        Authenticate with Spotify
+                    </button>
+                </a>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown(
+            """
+            <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
+            <hr style="border: 1px solid #1DB954; width: 100%; margin: 20px auto;" />
+
+            <div style="margin-top: 20px;">
+                <h2 style="color: #1DB954;">How It Works</h2>
+                <p style="line-height: 1.6;">
+                Tired of songs that don't hit the right vibe anymore? SIMMPLIFY tracks how often you skip songs on your playlists and helps you decide which tracks to keep or remove. Just log in with your Spotify account, let SIMMPLIFY do its magic, and enjoy a finely-tuned playlist that's perfect for you!
+                </p>
+            </div>
+            <div style="margin-top: 20px;">
+                <h2 style="color: #1DB954;">How To Use</h2>
+                <p>Connect your Spotify account with the Button Above and listen like normal.</p>
+                <p>Check back here in a week or two to see your suggested playlist updates!</p>
+                <p>The Simmplify Data Section will calculate and sort your playlist songs by how often they are skipped.</p>
+                <p>Use the buttons to automatically remove songs based on preference score.</p>
+                <p>The Historical Data Section will show you a list of every song you have listened to and listening percentage.</p>
+            <hr style="border: 1px solid #1DB954; width: 100%; margin: 20px auto;" />
+
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
 
 else:
     #After authentication, display the player and simmplify page
@@ -518,9 +525,6 @@ else:
     playlist_options = ["ALL"] + list(userPlaylists["name"].unique())
     sde1, sde2, sde3 = st.columns(3)
     selectedPlaylistName = sde1.selectbox("Filter by Playlist", placeholder="-", options=playlist_options)
-    #selectedPlaylistName = sde2.slider(1,10)
-    #songCountFilter = sde3.slider(1,10)
-
 
     simmplify = st.empty()
 
@@ -534,10 +538,13 @@ else:
     summarizedListeningData = getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists)
 
     historicalData = format_historical_data(historicalData, selectedPlaylistName)
-    
-    st.divider()
 
-    st.markdown("### Historical Listening Data")
+    st.markdown("""
+        <div style="text-align: left">
+            <hr style="border: 1px solid #1DB954; width: 100%" />
+            <h3 style="color: #1DB954; font-size: 2em;">Historical Listening Data:</h3>
+        </div>
+    """, unsafe_allow_html=True)
 
     historical = st.empty()
 
