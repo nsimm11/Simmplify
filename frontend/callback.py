@@ -117,12 +117,21 @@ def getUserId():
         return newUserId
 
 def login():
-    st.session_state.clear()  # Clear the session state
     query_params = st.query_params  # Use st.query_params directly
     code = query_params.get("code")  # Get the code directly
 
+    # Log the authorization code from the URL
+    print(f"Authorization code from URL: {code}")
+
     if code:
         st.session_state['auth_code'] = code  # Store the code in session state
+        # Log the stored authorization code
+        print(f"Stored authorization code in session state: {st.session_state['auth_code']}")
+
+        # Check if the stored code matches the one from the URL
+        if st.session_state['auth_code'] != code:
+            print("Mismatch between stored auth code and URL auth code.")
+
         # Proceed with token exchange
         try:
             # Check if the access token is already cached and valid
