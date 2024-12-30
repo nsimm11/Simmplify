@@ -132,14 +132,17 @@ def login():
                 st.toast("You are already authenticated!")
             else:
                 # Exchange the authorization code for an access token
-                sp_oauth.get_access_token(code)  # This will cache the token internally
-                token_info = sp_oauth.get_cached_token()  # Retrieve the token info as a dictionary
-                
-                # Store access token in session state
+                token_info = sp_oauth.get_access_token(code)  # This will cache the token internally
                 st.session_state['access_token'] = token_info['access_token']
                 st.session_state["access_token_endTime"] = datetime.fromtimestamp(token_info['expires_at'], pytz.utc) - timedelta(minutes=3)
                 st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
-        
+            
+            # Log the access token for debugging
+            print(f"Access Token: {st.session_state['access_token']}")  # Debugging line
+            
+            # After successful authentication, retrieve user info
+            getUserInfo()  # Ensure this function is called to update session state with the current user
+
         except Exception as e:
             st.warning(f"Error fetching the token: {e}")
     elif 'auth_code' in st.session_state:
@@ -162,6 +165,12 @@ def login():
                 st.session_state["access_token_endTime"] = datetime.fromtimestamp(token_info['expires_at'], pytz.utc) - timedelta(minutes=3)
                 st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
         
+            # Log the access token for debugging
+            print(f"Access Token: {st.session_state['access_token']}")  # Debugging line
+            
+            # After successful authentication, retrieve user info
+            getUserInfo()  # Ensure this function is called to update session state with the current user
+
         except Exception as e:
             st.warning(f"Error fetching the token: {e}")
     else:
@@ -178,6 +187,13 @@ def getUserInfo():
             return
 
         userUri = requestsAsJsonUser["uri"]
+        
+        # Check if the userUri matches the one in session state
+        if 'UserUri' in st.session_state and st.session_state['UserUri'] != userUri:
+            errorLog(f"UserUri mismatch: Expected {st.session_state['UserUri']}, but got {userUri}")
+            st.warning("User information does not match the current session. Please log in again.")
+            return
+
         st.session_state["UserName"] = str(requestsAsJsonUser["display_name"])
         st.session_state["UserUri"] = userUri
         st.session_state["UserId"] = str(requestsAsJsonUser["id"])
