@@ -5,4 +5,7 @@ error.txt
 
 databaseSetup.py
 
+frontend/.streamlit/secrets.toml
+
+*.toml
 *.csv

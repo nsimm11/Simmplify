@@ -1,5 +1,4 @@
 import streamlit as st
-import spotipy as sp
 from spotipy.oauth2 import SpotifyOAuth
 import os
 import numpy as np
@@ -57,18 +56,18 @@ if 'previous_song_name' not in st.session_state:
 # Scopes required for accessing user's currently playing track
 SCOPE = "user-read-playback-state user-read-currently-playing"
 
-sp_oauth = SpotifyOAuth(client_id=credentials.CLIENT_ID, 
-                        client_secret=credentials.CLIENT_SECRET,
-                        redirect_uri=credentials.REDIRECT_URI,
+sp_oauth = SpotifyOAuth(client_id=st.secrets["CLIENT_ID"], 
+                        client_secret=st.secrets["CLIENT_SECRET"],
+                        redirect_uri=st.secrets["REDIRECT_URI"],
                         scope=SCOPE)
 
 #connection string 
 conn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
-                     f'Server={credentials.dbConnectionLocation};'
-                     f'Database={credentials.dbID};'
+                     f'Server={st.secrets["dbConnectionLocation"]};'
+                     f'Database={st.secrets["dbID"]};'
                      'TrustServerCertificate=yes;'
-                     f'UID={credentials.dbUsername};'
-                     f'PWD={credentials.dbPassword}')
+                     f'UID={st.secrets["dbUsername"]};'
+                     f'PWD={st.secrets["dbPassword"]}')
 
 cursor = conn.cursor()
 
@@ -480,7 +479,7 @@ else:
     
     st.markdown("""
         <div style="text-align: center; margin-top: 10px;">
-            <h1 style="color: #1DB954; font-size: 4em; margin-bottom: 10px;">Simmplify</h1>
+            <h1 style="color: #1DB954; font-size: 4em; margin-bottom: 10px;">SIMMPLIFY</h1>
             <p style="font-size: 1.5em; color: #FFFFFF;">Track your habits and declutter your playlists to enjoy your favourite songs, more often!</p>
             <hr style="border: 1px solid #1DB954; width: 100%; margin: 20px auto;" />
         </div>
