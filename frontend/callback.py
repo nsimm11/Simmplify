@@ -12,8 +12,6 @@ import pyodbc
 import pytz
 from streamlit_extras.switch_page_button import switch_page
 
-import credentials
-
 st.set_page_config(
     layout="wide", 
     page_title="SIMMPLIFY",
