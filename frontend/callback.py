@@ -117,66 +117,26 @@ def getUserId():
         return newUserId
 
 def login():
+    st.session_state.clear()  # Clear the session state
     query_params = st.query_params  # Use st.query_params directly
     code = query_params.get("code")  # Get the code directly
 
     # Log the authorization code from the URL
-    st.write(f"Authorization code from URL: {code}")
-    st.write(f"Stored authorization code in session state: {st.session_state['auth_code']}")
-    
+    print(f"Authorization code from URL: {code}")
 
     if code:
-        st.session_state['auth_code'] = code  # Store the code in session state
-        # Log the stored authorization code
+        # Store the code in session state
+        st.session_state['auth_code'] = code  
         print(f"Stored authorization code in session state: {st.session_state['auth_code']}")
 
-        # Check if the stored code matches the one from the URL
-        if st.session_state['auth_code'] != code:
-            print("Mismatch between stored auth code and URL auth code.")
-
         # Proceed with token exchange
         try:
-            # Check if the access token is already cached and valid
-            token_info = sp_oauth.get_cached_token()
-            if token_info and token_info['expires_at'] > int(time.time()):  # Check if token is still valid
-                st.session_state['access_token'] = token_info['access_token']
-                st.session_state["access_token_endTime"] = datetime.fromtimestamp(token_info['expires_at'], pytz.utc) - timedelta(minutes=3)
-                st.toast("You are already authenticated!")
-            else:
-                # Exchange the authorization code for an access token
-                token_info = sp_oauth.get_access_token(code)  # This will cache the token internally
-                st.session_state['access_token'] = token_info['access_token']
-                st.session_state["access_token_endTime"] = datetime.fromtimestamp(token_info['expires_at'], pytz.utc) - timedelta(minutes=3)
-                st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
+            # Always attempt to exchange the authorization code for a new access token
+            token_info = sp_oauth.get_access_token(code)  # This will cache the token internally
+            st.session_state['access_token'] = token_info['access_token']
+            st.session_state["access_token_endTime"] = datetime.fromtimestamp(token_info['expires_at'], pytz.utc) - timedelta(minutes=3)
+            st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
             
-            # Log the access token for debugging
-            st.write(f"Access Token post auth: {st.session_state['access_token']}")  # Debugging line
-            
-            # After successful authentication, retrieve user info
-            getUserInfo()  # Ensure this function is called to update session state with the current user
-
-        except Exception as e:
-            st.warning(f"Error fetching the token: {e}")
-    elif 'auth_code' in st.session_state:
-        code = st.session_state['auth_code']  # Retrieve the code from session state
-        # Proceed with token exchange
-        try:
-            # Check if the access token is already cached and valid
-            token_info = sp_oauth.get_cached_token()
-            if token_info and token_info['expires_at'] > int(time.time()):  # Check if token is still valid
-                st.session_state['access_token'] = token_info['access_token']
-                st.session_state["access_token_endTime"] = datetime.fromtimestamp(token_info['expires_at'], pytz.utc) - timedelta(minutes=3)
-                st.toast("You are already authenticated!")
-            else:
-                # Exchange the authorization code for an access token
-                sp_oauth.get_access_token(code)  # This will cache the token internally
-                token_info = sp_oauth.get_cached_token()  # Retrieve the token info as a dictionary
-                
-                # Store access token in session state
-                st.session_state['access_token'] = token_info['access_token']
-                st.session_state["access_token_endTime"] = datetime.fromtimestamp(token_info['expires_at'], pytz.utc) - timedelta(minutes=3)
-                st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
-        
             # Log the access token for debugging
             print(f"Access Token: {st.session_state['access_token']}")  # Debugging line
             
@@ -185,6 +145,11 @@ def login():
 
         except Exception as e:
             st.warning(f"Error fetching the token: {e}")
+    elif 'auth_code' in st.session_state:
+        # If the auth code is already in session state, proceed with token exchange
+        print(f"Using stored authorization code: {st.session_state['auth_code']}")
+        getUserInfo()  # Ensure this function is called to update session state with the current user
+
     else:
         st.warning("Authorization code not found in URL. Please try again.")
 
