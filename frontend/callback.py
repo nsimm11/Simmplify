@@ -12,7 +12,6 @@ import pyodbc
 import pytz
 from streamlit_extras.switch_page_button import switch_page
 
-
 st.set_page_config(
     layout="wide", 
     page_title="SIMMPLIFY",
@@ -84,7 +83,6 @@ def getQuery(query, params=None):
     
 def getUserId():
     # Ensure the correct table name and schema
-    st.toast(f"UserUri: {st.session_state['UserUri'].strip()}")
     userIdQuery = "SELECT * FROM dbo.USERS WHERE userUri = ?"
     userUri = st.session_state['UserUri'].strip()
 
@@ -119,7 +117,6 @@ def getUserId():
 
 def login():
 
-
     if st.session_state['access_token'] != '' and st.session_state["access_token_endTime"] != '' and st.session_state["refresh_token"] != '':
         st.toast("You are already logged in!")
         return
@@ -152,6 +149,7 @@ def exchange_code_for_token(code):
     
     if response.status_code == 200:
         token_info = response.json()
+        st.toast("Updating Session State")
         st.session_state['access_token'] = token_info['access_token']
         st.session_state["access_token_endTime"] = datetime.now(pytz.utc) + timedelta(seconds=token_info['expires_in'])
         st.session_state["refresh_token"] = token_info['refresh_token']
@@ -567,7 +565,7 @@ if code == None and st.session_state['auth_code'] == None:
 
     st.markdown(f"""
             <div style="display: flex; justify-content: center;">
-                <a href="{auth_url}">
+                <a href="{auth_url}" target="_self">
                     <button class="button" style="background-color: #1DB954; text-align: center; color: #FFFFFF; border: none; padding: 15px 30px; font-size: 1rem; border-radius: 25px; cursor: pointer;">
                         Authenticate with Spotify
                     </button>
