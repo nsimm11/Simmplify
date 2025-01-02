@@ -511,41 +511,41 @@ def display_stats(column, title, is_artist, display_percentage):
             # Adjust column sizes: rank, name, image, and percentage
             cols = st.columns([0.5, 1.5, 1, 1])
 
-        # Display rank
-        with cols[0]:
-            st.markdown(
-                f"<div class='center-text'><span style='font-size: 2em; font-weight: bold; color: rgba(255, 255, 255, 0.8);'>{count}</span></div>",
-                unsafe_allow_html=True,
-            )
+            # Display rank
+            with cols[0]:
+                st.markdown(
+                    f"<div class='center-text'><span style='font-size: 2em; font-weight: bold; color: rgba(255, 255, 255, 0.8);'>{count}</span></div>",
+                    unsafe_allow_html=True,
+                )
 
-        # Display artist or song name
-        with cols[1]:
-            if is_artist:
-                st.markdown(f"**{item.artistName}**")
-            else:
-                st.markdown(f"**{item.songName}** by **{item.artistName}**")
+            # Display artist or song name
+            with cols[1]:
+                if is_artist:
+                    st.markdown(f"**{item.artistName}**")
+                else:
+                    st.markdown(f"**{item.songName}** by **{item.artistName}**")
 
-        # Display artist image or album cover
-        with cols[2]:
-            if is_artist:
-                artist_image_url = get_artist_image_url(item.artistName)
-                st.image(artist_image_url, width=80)
-            else:
-                album_cover_url = get_album_cover_url(item.songName)
-                st.image(album_cover_url, width=80)
+            # Display artist image or album cover
+            with cols[2]:
+                if is_artist:
+                    artist_image_url = get_artist_image_url(item.artistName)
+                    st.image(artist_image_url, width=80)
+                else:
+                    album_cover_url = get_album_cover_url(item.songName)
+                    st.image(album_cover_url, width=80)
 
-        # Display percentage listened or skipped
-        with cols[3]:
-            percentage = (
-                f"{item.percentageListened}%" if display_percentage == 'listened' else f"{item.percentageSkipped}%"
-            )
-            label = "Listened" if display_percentage == 'listened' else "Skipped"
-            st.markdown(
-                f"<div class='center-text'><p><strong>{label}:</strong> {percentage}</p></div>",
-                unsafe_allow_html=True,
-            )
+            # Display percentage listened or skipped
+            with cols[3]:
+                percentage = (
+                    f"{item.percentageListened}%" if display_percentage == 'listened' else f"{item.percentageSkipped}%"
+                )
+                label = "Listened" if display_percentage == 'listened' else "Skipped"
+                st.markdown(
+                    f"<div class='center-text'><p><strong>{label}:</strong> {percentage}</p></div>",
+                    unsafe_allow_html=True,
+                )
 
-        count += 1
+            count += 1
 
 query_params = st.query_params  # Use st.query_params directly
 code = query_params.get("code")  # Get the code directly
