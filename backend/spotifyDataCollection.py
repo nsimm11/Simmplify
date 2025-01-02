@@ -35,14 +35,14 @@ previous_playback_data = {}
 # Function to refresh access tokens
 def refresh_access_tokens():
     # Query to get all users with refresh tokens and their access token expiration times
-    query = "SELECT dbID, refreshToken, accessTokenEndTime, userUri FROM UserTokens WHERE refreshToken IS NOT NULL"
+    query = "SELECT dbID, refreshToken, accessTokenEndTime, userUri, accessToken FROM UserTokens WHERE refreshToken IS NOT NULL"
     cursor.execute(query)
     users = cursor.fetchall()
 
     active_users = []
 
     for user in users:
-        db_id, refresh_token, access_token_end_time, user_uri = user
+        db_id, refresh_token, access_token_end_time, user_uri, access_token = user
         try:
             # Ensure access_token_end_time is timezone-aware
             if access_token_end_time.tzinfo is None:
@@ -54,7 +54,7 @@ def refresh_access_tokens():
                 print(f"Refreshing token for user {db_id}")
                 # Refresh the access token using the existing sp_oauth object
                 token_info = sp_oauth.refresh_access_token(refresh_token)
-                new_access_token = token_info['access_token']
+                access_token = token_info['access_token']
                 
                 # Update existing token entry
                 update_access_token_query = """
@@ -63,25 +63,22 @@ def refresh_access_tokens():
                 WHERE dbID = ?
                 """
                 expires_at_utc = datetime.fromtimestamp(token_info['expires_at'], pytz.utc)
-                cursor.execute(update_access_token_query, (new_access_token, expires_at_utc, datetime.now(pytz.utc), db_id))
+                cursor.execute(update_access_token_query, (access_token, expires_at_utc, datetime.now(pytz.utc), db_id))
                 
                 conn.commit()
                 print(f"Successfully refreshed token for user {db_id}")
                 
             # Add user to the active list if their token is still valid
             if access_token_end_time > current_time_utc:
-                active_users.append((db_id, user_uri))
+                active_users.append((db_id, user_uri, access_token))
         except Exception as e:
             print(f"Error refreshing token for user {db_id}: {e}")
 
     return active_users
 
 # Function to get data from the Spotify API about the currently playing track
-def get_current_playback_data():
+def get_current_playback_data(access_token):
     try:
-        # Get the access token from the SpotifyOAuth object
-        token_info = sp_oauth.get_cached_token()
-        access_token = token_info['access_token']
         
         # Define the endpoint and headers
         url = "https://api.spotify.com/v1/me/player"
@@ -312,7 +309,7 @@ def run_periodically(default_interval=10, inactive_interval=60):  # Default chec
     while True:
         users = refresh_access_tokens()
 
-        for db_id, user_uri in users:
+        for db_id, user_uri, access_token in users:
             current_time = time.time()
 
             # Check if it's time to process this user's playback data
@@ -328,7 +325,7 @@ def run_periodically(default_interval=10, inactive_interval=60):  # Default chec
             print(f"Processing playback data for user {user_uri}")
             
             # Get current playback data for the user
-            current_playback = get_current_playback_data()
+            current_playback = get_current_playback_data(access_token)
             
             # Retrieve previous playback data if available
             previous_playback = previous_playback_data.get(user_uri)

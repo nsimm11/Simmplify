@@ -150,6 +150,7 @@ def exchange_code_for_token(code):
         token_info = response.json()
         st.session_state['access_token'] = token_info['access_token']
         st.session_state["access_token_endTime"] = datetime.now(pytz.utc) + timedelta(seconds=token_info['expires_in'])
+        st.session_state["refresh_token"] = token_info['refresh_token']
         st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
     else:
         st.warning(f"Error fetching the token: {response.status_code} - {response.text}")
@@ -174,11 +175,11 @@ def getUserInfo():
         errorLog(f"API request error in getUserInfo: {e}")
         st.warning("An error occurred while connecting to the Spotify API. Please try again later.")
 
-def storeTokensInDatabase():
+def storeTokensInDatabase()
     db_id = st.session_state['UserDbId']
     access_token = st.session_state['access_token']
     expires_at_utc = st.session_state["access_token_endTime"] + timedelta(minutes=3)
-    refresh_token = sp_oauth.get_cached_token()['refresh_token']
+    refresh_token = st.session_state['refresh_token']
     userUri = st.session_state.get('UserUri', '').strip()
 
     if not userUri:
