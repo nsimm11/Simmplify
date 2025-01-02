@@ -408,13 +408,16 @@ def getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists):
 
 def summarizedAdvancedStats(historicalData):
 
-    bottomArtists = historicalData.groupby('artistName').agg({'percentageSkipped': 'sum'}).reset_index().sort_values(by='percentageSkipped', ascending=False).head(5)
+    # Filter out entries where percentage listened is 0 for top categories
+    filtered_top_historicalData = historicalData[historicalData['percentageListened'] > 0]
+
+    bottomArtists = historicalData[historicalData['percentageSkipped'] > 0].groupby('artistName').agg({'percentageSkipped': 'sum'}).reset_index().sort_values(by='percentageSkipped', ascending=False).head(5)
     
-    bottomSongs = historicalData.groupby(['songName', 'artistName']).agg({'percentageSkipped': 'sum'}).reset_index().sort_values(by='percentageSkipped', ascending=False).head(5)
+    bottomSongs = historicalData[historicalData['percentageSkipped'] > 0].groupby(['songName', 'artistName']).agg({'percentageSkipped': 'sum'}).reset_index().sort_values(by='percentageSkipped', ascending=False).head(5)
     
-    topSongs = historicalData.groupby(['songName', 'artistName']).agg({'percentageListened': 'sum'}).reset_index().sort_values(by='percentageListened', ascending=False).head(5)
+    topSongs = filtered_top_historicalData.groupby(['songName', 'artistName']).agg({'percentageListened': 'sum'}).reset_index().sort_values(by='percentageListened', ascending=False).head(5)
     
-    topArtists = historicalData.groupby('artistName').agg({'percentageListened': 'sum'}).reset_index().sort_values(by='percentageListened', ascending=False).head(5)
+    topArtists = filtered_top_historicalData.groupby('artistName').agg({'percentageListened': 'sum'}).reset_index().sort_values(by='percentageListened', ascending=False).head(5)
 
     return topArtists, topSongs, bottomArtists, bottomSongs
 
@@ -505,7 +508,6 @@ def display_stats(column, title, is_artist, display_percentage):
     st.markdown(f"<h4 style='color: #1DB954;'>{title}</h4>", unsafe_allow_html=True)
 
     count = 1
-    st.write(column)
     if len(column) > 0:
         for item in column.itertuples():
             # Adjust column sizes: rank, name, image, and percentage
