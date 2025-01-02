@@ -175,7 +175,7 @@ def getUserInfo():
         errorLog(f"API request error in getUserInfo: {e}")
         st.warning("An error occurred while connecting to the Spotify API. Please try again later.")
 
-def storeTokensInDatabase()
+def storeTokensInDatabase():
     db_id = st.session_state['UserDbId']
     access_token = st.session_state['access_token']
     expires_at_utc = st.session_state["access_token_endTime"] + timedelta(minutes=3)
