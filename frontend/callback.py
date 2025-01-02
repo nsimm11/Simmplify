@@ -489,9 +489,13 @@ def get_artist_image_url(artist_name):
     #First try to get the image by songUri
     artist_image_url = search_artist_image_bySongUri(artist_name)
 
+    st.write(artist_image_url)
+
     #If that fails, try to get the image by artist name
     if artist_image_url is None:
         artist_image_url = search_artist_image_byName(artist_name)
+        st.write(artist_image_url)
+
     else: return artist_image_url
 
     #If that fails, return a placeholder image URL
@@ -531,7 +535,6 @@ def display_stats(column, title, is_artist, display_percentage):
             else:
                 album_cover_url = get_album_cover_url(item.songName)
                 st.write(artist_image_url)
-
                 st.image(album_cover_url, width=80)
 
         # Display percentage listened or skipped
