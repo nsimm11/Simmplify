@@ -536,7 +536,7 @@ def display_stats(column, title, statType, display_percentage):
                 elif statType == "Song":
                     st.markdown(f"**{item.songName}** by **{item.artistName}**")
                 elif statType == "Playlist":
-                    st.markdown(f"**{userPlaylists[userPlaylists['uri'] == item.playlistUri]['name'].values[0]}**")
+                    st.markdown(f"**{userPlaylists[userPlaylists['uri'] == item.playlistUri]['name'].values[0] if item.playlistUri in userPlaylists['uri'].values else 'Non-User Playlist'}**")
 
             # Display artist image or album cover
             with cols[2]:
