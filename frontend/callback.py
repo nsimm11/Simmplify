@@ -634,9 +634,9 @@ else:
 
     # Call the login function at the start of the script
 
-    st.write(st.session_state['access_token'])
-    st.write(st.session_state["access_token_endTime"])
-    st.write(st.session_state["refresh_token"]) 
+    st.write("Access Token: " +    st.session_state['access_token'])
+    st.write("Access Token End Time: " + st.session_state["access_token_endTime"])
+    st.write("Refresh Token: " + st.session_state["refresh_token"]) 
 
     login()
 
