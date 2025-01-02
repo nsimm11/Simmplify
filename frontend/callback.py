@@ -297,14 +297,15 @@ def getHistoricalData(userUri):
     ORDER BY ld.listeningStartTime DESC
     """
     historicalData = getQuery(historicalDataQuery, [userUri])
-
-    st.write(historicalData["listeningStartTime"].max())
     
     # Convert listeningStartTime to user's local timezone and round to nearest second
     user_timezone = pytz.timezone('America/New_York')  # Replace with the user's actual timezone
     historicalData['listeningStartTime'] = historicalData['listeningStartTime'].apply(
         lambda x: x.replace(tzinfo=pytz.utc).astimezone(user_timezone).replace(microsecond=0)
     )
+    
+
+    st.write(historicalData["listeningStartTime"].max())
     
     return historicalData
 
