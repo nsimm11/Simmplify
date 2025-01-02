@@ -413,12 +413,16 @@ def summarizedAdvancedStats(historicalData):
     bottomArtists = historicalData[historicalData['percentageSkipped'] > 0].groupby('artistName').agg({'percentageSkipped': 'sum'}).reset_index().sort_values(by='percentageSkipped', ascending=False).head(5)
     
     bottomSongs = historicalData[historicalData['percentageSkipped'] > 0].groupby(['songName', 'artistName']).agg({'percentageSkipped': 'sum'}).reset_index().sort_values(by='percentageSkipped', ascending=False).head(5)
+
+    bottomPlaylists = historicalData.groupby('playlistUri').agg({'percentageSkipped': 'sum'}).reset_index().sort_values(by='percentageSkipped', ascending=False).head(5)
     
     topSongs = filtered_top_historicalData.groupby(['songName', 'artistName']).agg({'percentageListened': 'sum'}).reset_index().sort_values(by='percentageListened', ascending=False).head(5)
     
     topArtists = filtered_top_historicalData.groupby('artistName').agg({'percentageListened': 'sum'}).reset_index().sort_values(by='percentageListened', ascending=False).head(5)
 
-    return topArtists, topSongs, bottomArtists, bottomSongs
+    topPlaylists = historicalData.groupby('playlistUri').agg({'percentageListened': 'sum'}).reset_index().sort_values(by='percentageListened', ascending=False).head(5)
+
+    return topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists
 
 @st.cache_data
 def get_album_cover_url(song_name):
@@ -658,11 +662,21 @@ else:
     st.markdown("""
         <div style="text-align: left">
             <hr style="border: 1px solid #1DB954; width: 100%" />
-            <h3 style="color: #1DB954; font-size: 2em;">Biggest Hits or Misses:</h3>
+            <h3 style="color: #1DB954; font-size: 2em;">Biggest Hits</h3>
         </div>
     """, unsafe_allow_html=True)
 
-    advancedStats = st.empty()
+    biggestHits = st.empty()
+
+    st.markdown("""
+        <div style="text-align: left">
+            <hr style="border: 1px solid #1DB954; width: 100%" />
+            <h3 style="color: #1DB954; font-size: 2em;">Biggest Misses</h3>
+        </div>  
+    """, unsafe_allow_html=True)
+
+    biggestMisses = st.empty()
+
 
     if selectedPlaylistName == "ALL":
         selectedPlaylistUri = None  # No filtering by playlist
@@ -672,7 +686,7 @@ else:
     st.session_state['SelectedPlaylist'] = selectedPlaylistUri
 
     summarizedListeningData = getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists)
-    topArtists, topSongs, bottomArtists, bottomSongs = summarizedAdvancedStats(historicalData)
+    topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists = summarizedAdvancedStats(historicalData)
 
     historicalData = format_historical_data(historicalData, selectedPlaylistName)
 
@@ -754,9 +768,9 @@ else:
         with simmplify.container():
             st.dataframe(summarizedListeningData, hide_index=True, use_container_width=True)
 
-        with advancedStats.container():
+        with biggestHits.container():
             # Clear previous columns
-            as1, as2, as3, as4 = st.columns(4)
+            as1, as2, as3 = st.columns(3)
 
             # Display Most Listened to Artists
             with as1:
@@ -768,11 +782,24 @@ else:
 
             # Display Most Skipped Artists
             with as3:
+                display_stats(topPlaylists, "Most Played Playlists", is_artist=False, display_percentage='listened')
+
+
+        with biggestMisses.container():
+            # Clear previous columns
+            bm1, bm2, bm3 = st.columns(3)
+
+            # Display Most Skipped Artists
+            with bm1:
                 display_stats(bottomArtists, "Most Skipped Artists", is_artist=True, display_percentage='skipped')
 
             # Display Most Skipped Songs
-            with as4:
+            with bm2:
                 display_stats(bottomSongs, "Most Skipped Songs", is_artist=False, display_percentage='skipped')
+
+            # Display Most Skipped Playlists
+            with bm3:   
+                display_stats(bottomPlaylists, "Most Skipped Playlists", is_artist=False, display_percentage='skipped')
 
         with historical.container():
             st.dataframe(historicalData, hide_index=True, use_container_width=True)
