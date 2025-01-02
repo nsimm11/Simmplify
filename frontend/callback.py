@@ -514,6 +514,8 @@ def get_playlist_image_url(playlist_name):
 def display_stats(column, title, statType, display_percentage):
     st.markdown(f"<h4 style='color: #1DB954;'>{title}</h4>", unsafe_allow_html=True)
 
+    st.write(column)
+
     count = 1
     if len(column) > 0:
         for item in column.itertuples():
