@@ -298,16 +298,12 @@ def getHistoricalData(userUri):
     """
     historicalData = getQuery(historicalDataQuery, [userUri])
 
-    st.write(historicalData["listeningStartTime"].head())
-    
     # Convert listeningStartTime to user's local timezone and round to nearest second
     user_timezone = pytz.timezone('America/New_York')  # Replace with the user's actual timezone
     historicalData['listeningStartTime'] = historicalData['listeningStartTime'].apply(
         lambda x: x.replace(tzinfo=pytz.utc).astimezone(user_timezone).replace(microsecond=0)
     )
 
-    st.write(historicalData["listeningStartTime"].head())
-    
     return historicalData
 
 def format_historical_data(df, playlist_name):
