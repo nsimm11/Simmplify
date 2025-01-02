@@ -119,11 +119,9 @@ def getUserId():
 
 def login():
 
-    st.write(st.session_state)
 
     if st.session_state['access_token'] != '' and st.session_state["access_token_endTime"] != '' and st.session_state["refresh_token"] != '':
         st.toast("You are already logged in!")
-        st.write(st.session_state)
         return
     
     query_params = st.query_params  # Use st.query_params directly
@@ -135,8 +133,6 @@ def login():
 
         # Proceed with token exchange using the new function
         exchange_code_for_token(code)  # Call the new function to exchange the code for a token
-
-        st.write(st.session_state)
 
 
     else:
@@ -153,7 +149,6 @@ def exchange_code_for_token(code):
     }
     
     response = requests.post(token_url, data=payload)
-    st.write("Token Response: ", response.status_code)
     
     if response.status_code == 200:
         token_info = response.json()
