@@ -505,9 +505,13 @@ def get_artist_image_url(artist_name):
         return "https://via.placeholder.com/150/CCCCCC/FFFFFF?text=No+Image"  # Placeholder grey box
     else: return artist_image_url
 
+@st.cache_data
+def get_playlist_image_url(playlist_name):
+    return "https://via.placeholder.com/150/CCCCCC/FFFFFF?text=No+Image"  # Placeholder grey box
+
 
 # Function to display statistics for artists or songs
-def display_stats(column, title, is_artist, display_percentage):
+def display_stats(column, title, statType, display_percentage):
     st.markdown(f"<h4 style='color: #1DB954;'>{title}</h4>", unsafe_allow_html=True)
 
     count = 1
@@ -525,19 +529,24 @@ def display_stats(column, title, is_artist, display_percentage):
 
             # Display artist or song name
             with cols[1]:
-                if is_artist:
+                if statType == "Artist":
                     st.markdown(f"**{item.artistName}**")
-                else:
+                elif statType == "Song":
                     st.markdown(f"**{item.songName}** by **{item.artistName}**")
+                elif statType == "Playlist":
+                    st.markdown(f"**{item.playlistName}**")
 
             # Display artist image or album cover
             with cols[2]:
-                if is_artist:
+                if statType == "Artist":
                     artist_image_url = get_artist_image_url(item.artistName)
                     st.image(artist_image_url, width=80)
-                else:
+                elif statType == "Song":
                     album_cover_url = get_album_cover_url(item.songName)
                     st.image(album_cover_url, width=80)
+                elif statType == "Playlist":
+                    playlist_image_url = get_playlist_image_url(item.playlistName)
+                    st.image(playlist_image_url, width=80)
 
             # Display percentage listened or skipped
             with cols[3]:
@@ -774,15 +783,15 @@ else:
 
             # Display Most Listened to Artists
             with as1:
-                display_stats(topArtists, "Most Listened to Artists", is_artist=True, display_percentage='listened')
+                display_stats(topArtists, "Most Listened to Artists", "Artist", display_percentage='listened')
 
             # Display Most Listened to Songs
             with as2:
-                display_stats(topSongs, "Most Listened to Songs", is_artist=False, display_percentage='listened')
+                display_stats(topSongs, "Most Listened to Songs", "Song", display_percentage='listened')
 
             # Display Most Skipped Artists
             with as3:
-                display_stats(topPlaylists, "Most Played Playlists", is_artist=False, display_percentage='listened')
+                display_stats(topPlaylists, "Most Played Playlists", "Playlist", display_percentage='listened')
 
 
         with biggestMisses.container():
@@ -791,15 +800,15 @@ else:
 
             # Display Most Skipped Artists
             with bm1:
-                display_stats(bottomArtists, "Most Skipped Artists", is_artist=True, display_percentage='skipped')
+                display_stats(bottomArtists, "Most Skipped Artists", "Artist", display_percentage='skipped')
 
             # Display Most Skipped Songs
             with bm2:
-                display_stats(bottomSongs, "Most Skipped Songs", is_artist=False, display_percentage='skipped')
+                display_stats(bottomSongs, "Most Skipped Songs", "Song", display_percentage='skipped')
 
             # Display Most Skipped Playlists
             with bm3:   
-                display_stats(bottomPlaylists, "Most Skipped Playlists", is_artist=False, display_percentage='skipped')
+                display_stats(bottomPlaylists, "Most Skipped Playlists", "Playlist", display_percentage='skipped')
 
         with historical.container():
             st.dataframe(historicalData, hide_index=True, use_container_width=True)
