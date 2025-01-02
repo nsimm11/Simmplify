@@ -408,7 +408,144 @@ def getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists):
 
     return styled_summarizedData
 
+def summarizedAdvancedStats(historicalData):
 
+    bottomArtists = historicalData.groupby('artistName').agg({'percentageSkipped': 'sum'}).reset_index().sort_values(by='percentageSkipped', ascending=False).head(5)
+    
+    bottomSongs = historicalData.groupby(['songName', 'artistName']).agg({'percentageSkipped': 'sum'}).reset_index().sort_values(by='percentageSkipped', ascending=False).head(5)
+    
+    topSongs = historicalData.groupby(['songName', 'artistName']).agg({'percentageListened': 'sum'}).reset_index().sort_values(by='percentageListened', ascending=False).head(5)
+    
+    topArtists = historicalData.groupby('artistName').agg({'percentageListened': 'sum'}).reset_index().sort_values(by='percentageListened', ascending=False).head(5)
+
+    return topArtists, topSongs, bottomArtists, bottomSongs
+
+@st.cache_data
+def get_album_cover_url(song_name):
+    # Define the endpoint for searching the song
+    search_url = "https://api.spotify.com/v1/search"
+    params = {
+        "q": song_name,
+        "type": "track",
+        "limit": 1  # Limit to one result
+    }
+
+    # Use the submitRequest function to make the API call
+    response = submitRequest(search_url, "Get Album Cover", params)
+
+    if response and 'tracks' in response and response['tracks']['items']:
+        # Get the first track's album cover image URL
+        album_cover_url = response['tracks']['items'][0]['album']['images'][0]['url']
+        return album_cover_url
+
+    # Return a placeholder image URL if no cover is found or an error occurs
+    return "https://via.placeholder.com/150/CCCCCC/FFFFFF?text=No+Cover"  # Placeholder grey box
+
+def search_artist_image_bySongUri(artistName):
+
+    #First look for songUris in SONGINFO by artistName, if there are multiple artist names, take the first one by delimiting by ","
+    songUri = getQuery("SELECT songUri FROM SONGINFO WHERE artistName = ?", [artistName.split(",")[0]])
+
+    #Check if query comes back empty
+    if len(songUri) == 0:
+        return None
+
+    # Define the endpoint for searching the artist
+    search_url = "https://api.spotify.com/v1/tracks/" + str(songUri["songUri"].iloc[0])
+    response = submitRequest(search_url, "Get Artist Image", {})
+
+    if response and 'album' in response and response['album']['images']:
+        # Check if the first artist has images
+        if response['album']['images']:
+            # Get the first artist's image URL
+            artist_image_url = response['album']['images'][0]['url']
+
+            return artist_image_url
+
+    return None
+
+def search_artist_image_byName(artist_name):
+    # Define the endpoint for searching the artist
+    search_url = "https://api.spotify.com/v1/search"
+    params = {
+        "q": artist_name,
+        "type": "artist",
+        "limit": 1  # Limit to one result
+    }
+
+    # Use the submitRequest function to make the API call
+    response = submitRequest(search_url, "Get Artist Image", params)
+
+    if response and 'artists' in response and response['artists']['items']:
+        # Check if the first artist has images
+        if response['artists']['items'][0]['images']:
+            # Get the first artist's image URL
+            artist_image_url = response['artists']['items'][0]['images'][0]['url']
+            return artist_image_url
+
+    return None
+
+
+@st.cache_data
+def get_artist_image_url(artist_name):
+    #First try to get the image by songUri
+    artist_image_url = search_artist_image_bySongUri(artist_name)
+
+    #If that fails, try to get the image by artist name
+    if artist_image_url is None:
+        artist_image_url = search_artist_image_byName(artist_name)
+    else: return artist_image_url
+
+
+    #If that fails, return a placeholder image URL
+    if artist_image_url is None:
+        return "https://via.placeholder.com/150/CCCCCC/FFFFFF?text=No+Image"  # Placeholder grey box
+
+
+# Function to display statistics for artists or songs
+def display_stats(column, title, is_artist, display_percentage):
+    st.markdown(f"<h4 style='color: #1DB954;'>{title}</h4>", unsafe_allow_html=True)
+
+    count = 1
+    for item in column.itertuples():
+        # Adjust column sizes: rank, name, image, and percentage
+        cols = st.columns([0.5, 1.5, 1, 1])
+
+        # Display rank
+        with cols[0]:
+            st.markdown(
+                f"<div class='center-text'><span style='font-size: 2em; font-weight: bold; color: rgba(255, 255, 255, 0.8);'>{count}</span></div>",
+                unsafe_allow_html=True,
+            )
+
+        # Display artist or song name
+        with cols[1]:
+            if is_artist:
+                st.markdown(f"**{item.artistName}**")
+            else:
+                st.markdown(f"**{item.songName}** by **{item.artistName}**")
+
+        # Display artist image or album cover
+        with cols[2]:
+            if is_artist:
+                artist_image_url = get_artist_image_url(item.artistName)
+                st.image(artist_image_url, width=80)
+            else:
+                album_cover_url = get_album_cover_url(item.songName)
+                st.image(album_cover_url, width=80)
+
+        # Display percentage listened or skipped
+        with cols[3]:
+            percentage = (
+                f"{item.percentageListened}%" if display_percentage == 'listened' else f"{item.percentageSkipped}%"
+            )
+            label = "Listened" if display_percentage == 'listened' else "Skipped"
+            st.markdown(
+                f"<div class='center-text'><p><strong>{label}:</strong> {percentage}</p></div>",
+                unsafe_allow_html=True,
+            )
+
+        count += 1
 
 query_params = st.query_params  # Use st.query_params directly
 code = query_params.get("code")  # Get the code directly
@@ -456,7 +593,7 @@ if code == None and st.session_state['auth_code'] == None:
                 <p>The Simmplify Data Section will calculate and sort your playlist songs by how often they are skipped.</p>
                 <p>Use the buttons to automatically remove songs based on preference score.</p>
                 <p>The Historical Data Section will show you a list of every song you have listened to and listening percentage.</p>
-            <hr style="border: 1px solid #1DB954; width: 100%; margin: 20px auto;" />
+                <hr style="border: 1px solid #1DB954; width: 100%; margin: 20px auto;" />
 
             </div>
             """,
@@ -475,15 +612,13 @@ else:
         </div>
     """, unsafe_allow_html=True)
 
-
-
     st.markdown(
         """<div style="text-align: left">
             <h3 style="color: #1DB954; font-size: 2em;">Player:</h3>
         </div>""", unsafe_allow_html=True)
+    
     player = st.empty()
     
-
     st.markdown("""
         <div style="text-align: left">
             <hr style="border: 1px solid #1DB954; width: 100%" />
@@ -502,7 +637,6 @@ else:
     # Display historical data for all playlists
     historicalData = getHistoricalData(userUri)
 
-
     #Get users playlists, allow user to select a playlist
     userPlaylists = spotifyUsersPlaylists(userName)
 
@@ -517,6 +651,16 @@ else:
 
     simmplify = st.empty()
 
+    st.markdown("""
+        <div style="text-align: left">
+            <hr style="border: 1px solid #1DB954; width: 100%" />
+            <h3 style="color: #1DB954; font-size: 2em;">Advanced Stats:</h3>
+        </div>
+    """, unsafe_allow_html=True)
+
+
+    advancedStats = st.empty()
+
     if selectedPlaylistName == "ALL":
         selectedPlaylistUri = None  # No filtering by playlist
     else:
@@ -525,6 +669,7 @@ else:
     st.session_state['SelectedPlaylist'] = selectedPlaylistUri
 
     summarizedListeningData = getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists)
+    topArtists, topSongs, bottomArtists, bottomSongs = summarizedAdvancedStats(historicalData)
 
     historicalData = format_historical_data(historicalData, selectedPlaylistName)
 
@@ -536,6 +681,19 @@ else:
     """, unsafe_allow_html=True)
 
     historical = st.empty()
+
+    image_path = "C:/Users/NSimms/OneDrive - Geosyntec/Desktop/General Coding/Simmplify/frontend/images/background3.jpg"
+    
+    st.markdown(f"""
+        <div style="text-align: center; padding: 10px; border: 2px solid #1DB954; border-radius: 10px; background-color: rgba(255, 255, 255, 0.0);">
+            <h4 style="color: #1DB954; font-size: 1.5em; margin-bottom: 5px;">Creator Info:</h4>
+            <img src="{image_path}">
+            <p style="color: #1DB954; font-size: 1.0em; margin-bottom: 5px;">Noah Simms - Developer and Music Enthusiast</p>
+            <a href="https://www.instagram.com/nsimm22/?hl=en" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">Instagram 🌟</a>
+            <a href="https://github.com/nsimm11" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">GitHub 💻</a>
+            <a href="https://ca.linkedin.com/in/noah-simms-360724162" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">LinkedIn 💼</a>
+        </div>
+    """, unsafe_allow_html=True)
 
     startTime = datetime.now(pytz.utc)
 
@@ -593,9 +751,31 @@ else:
         with simmplify.container():
             st.dataframe(summarizedListeningData, hide_index=True, use_container_width=True)
 
+        with advancedStats.container():
+            # Clear previous columns
+            as1, as2, as3, as4 = st.columns(4)
+
+            # Display Most Listened to Artists
+            with as1:
+                display_stats(topArtists, "Most Listened to Artists", is_artist=True, display_percentage='listened')
+
+            # Display Most Listened to Songs
+            with as2:
+                display_stats(topSongs, "Most Listened to Songs", is_artist=False, display_percentage='listened')
+
+            # Display Most Skipped Artists
+            with as3:
+                display_stats(bottomArtists, "Most Skipped Artists", is_artist=True, display_percentage='skipped')
+
+            # Display Most Skipped Songs
+            with as4:
+                display_stats(bottomSongs, "Most Skipped Songs", is_artist=False, display_percentage='skipped')
+
         with historical.container():
             st.dataframe(historicalData, hide_index=True, use_container_width=True)
         
 
         time.sleep(1)
+
+
 
