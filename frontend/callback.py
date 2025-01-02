@@ -565,7 +565,7 @@ if code == None and st.session_state['auth_code'] == None:
 
     st.markdown(f"""
             <div style="display: flex; justify-content: center;">
-                <a href="{auth_url}" target="_self">
+                <a href="{auth_url}" target="_blank">
                     <button class="button" style="background-color: #1DB954; text-align: center; color: #FFFFFF; border: none; padding: 15px 30px; font-size: 1rem; border-radius: 25px; cursor: pointer;">
                         Authenticate with Spotify
                     </button>
