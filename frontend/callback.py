@@ -489,18 +489,15 @@ def get_artist_image_url(artist_name):
     #First try to get the image by songUri
     artist_image_url = search_artist_image_bySongUri(artist_name)
 
-    st.write(artist_image_url)
-
     #If that fails, try to get the image by artist name
     if artist_image_url is None:
         artist_image_url = search_artist_image_byName(artist_name)
-        st.write(artist_image_url)
-
     else: return artist_image_url
 
     #If that fails, return a placeholder image URL
     if artist_image_url is None or "http" not in artist_image_url:
         return "https://via.placeholder.com/150/CCCCCC/FFFFFF?text=No+Image"  # Placeholder grey box
+    else: return artist_image_url
 
 
 # Function to display statistics for artists or songs
