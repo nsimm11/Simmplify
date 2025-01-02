@@ -2,28 +2,22 @@ import requests
 import pandas as pd
 from datetime import datetime, timedelta
 from spotipy.oauth2 import SpotifyOAuth
+import time
 
 import credentials as credentials
 
-# Scopes required for accessing user's currently playing track
-SCOPE = "user-read-playback-state user-read-currently-playing"
-
-sp_oauth = SpotifyOAuth(client_id=credentials.CLIENT_ID, 
-                        client_secret=credentials.CLIENT_SECRET,
-                        redirect_uri=credentials.REDIRECT_URI,
-                        scope=SCOPE)
-
 def getSpotifyHistory(access_token, after_timestamp):
+    print(after_timestamp)
 
-    #Print statement to show the datetime, convert timestamp to datetime
-    print(f"Processing Spotify History after {datetime.fromtimestamp(after_timestamp)}")
+    # Print statement to show the datetime, convert timestamp to datetime
+    print(f"Processing Spotify History after {datetime.fromtimestamp(after_timestamp/1000)}")
 
     headers = {
         "Authorization": f"Bearer {access_token}"
     }
     params = {
-        "limit": 50,
-        "after": after_timestamp
+        "limit": 20,
+        "after": after_timestamp  # Use milliseconds
     }
 
     response = requests.get(f"https://api.spotify.com/v1/me/player/recently-played", headers=headers, params=params)
@@ -31,7 +25,7 @@ def getSpotifyHistory(access_token, after_timestamp):
     if response.status_code == 200:
         return response.json()
     else:
-        print(f"Error: {response.status_code}")
+        print(f"Error: {response.status_code} - {response.text}")  # Print error message for debugging
         return None
 
 
@@ -43,27 +37,39 @@ def processSpotifyHistory(response):
             "track_id": item["track"]["id"],
             "track_name": item["track"]["name"],
             "artist_name": item["track"]["artists"][0]["name"],
-            "album_name": item["track"]["album"]["name"],
             "listening_start_time": item["played_at"],
-            "listening_end_time": item["played_at"],
-            "percentage_listened": 0,
-            "percentage_skipped": 0
+            "percentage_listened": 100,
         })
-    df = pd.DataFrame(listening_data)
+    listening_data_df = pd.DataFrame(listening_data)
 
-    #Take Cursor from response and return it to use in the main loop to get the next 50 items
-    next_cursor = response["cursors"]["after"]
-    return listening_data, next_cursor
+    #Take Cursor from response and return it to use in the main loop to get the next 50 items, check if cursors and after is in milliseconds
+    if "cursors" in response and response["cursors"] is not None and "after" in response["cursors"]:
+        print(response["cursors"])
+        next_cursor = response["cursors"]["after"]
+    else:
+        next_cursor = None
+    return listening_data_df, next_cursor
 
-loop_limit = 3
-after_timestamp = datetime.now().timestamp() - timedelta(days=1).total_seconds()
+loop_limit = 10
+after_timestamp = int(datetime.now().timestamp() - timedelta(days=30).total_seconds()) * 1000
 listening_data_main = pd.DataFrame()
-access_token = "BQAmDSXC22TfoM074aslq_CzcfVf34Hl_p8KiLuaiDEog2gXzfZ9LTofZbejn3XXgkx-b2ZlSr9CuLUioWIUfaJbfGVm_ewAG2ysZyOR-LGnWawRY_yOJSjxs9jUUMri8qYlfr2DuBuz3-NtBYsDgcywjQVOIdRnyRveZ1BTKAKVtZTnFLylJ3LKHNn9VQ"
+access_token = "BQDXJZ7JTlVOSsZf0kFpbu0y0IG17dDdC-1pB-L_jNt-XonEMKyGO8VY_V4AX0pFCjPI03M-5QfCDByr9NCqOH0ijeRSo1ZjIcWV5rAZ3hq6Ko7KoeQvNd3acia_LxKMXGQZzQEbtxDbr14icyJdlyY7F5eIKgxz-L9lj0luMBjlkNfmXA-g3ZK--vL92qYv"
 
-for i in range(loop_limit):
+while loop_limit > 0:
     response = getSpotifyHistory(access_token, after_timestamp)
-    listening_data, next_cursor = processSpotifyHistory(response)
-    listening_data_main = pd.concat([listening_data, listening_data_main])
-    after_timestamp = next_cursor
+    if response is None or "items" not in response or len(response["items"]) == 0:
+        break  # Exit if there's an error or no items
 
+    listening_data, _ = processSpotifyHistory(response)
+    listening_data_main = pd.concat([listening_data_main, listening_data])
+    
+    # Update after_timestamp to the played_at of the last track in the current response
+    after_timestamp = int(datetime.fromisoformat(response["items"][-1]["played_at"].replace("Z", "+00:00")).timestamp() * 1000)  # Convert to milliseconds
+
+    loop_limit -= 1  # Decrement loop limit
+    time.sleep(1)
+
+print(len(listening_data_main))
+listening_data_main = listening_data_main.reset_index(drop=True)
+listening_data_main.drop_duplicates(subset=["listening_start_time"], keep="first", inplace=True)
 print(listening_data_main)

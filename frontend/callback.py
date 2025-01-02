@@ -577,7 +577,7 @@ else:
                 else:
                     c2.markdown('Playlist: Non-User Playlist')
 
-                if userCurrentSongPlayingDict["album.images"] != "":
+                if "album.images" in userCurrentSongPlayingDict and userCurrentSongPlayingDict["album.images"] != "":
                     c3.image(userCurrentSongPlayingDict["album.images"], width=150)
                 c2.progress(float(userCurrentSongPlayingDict["SongCurrentPosition"]) / userCurrentSongPlayingDict["duration_ms"])
                 c1.markdown(f"User: {st.session_state['UserName']}")

@@ -185,9 +185,8 @@ def submitRequest(endpoint, functionName, params, access_token):
 def getSpotifyHistoricalData(userUri, historicalData, access_token):
     # Find the most recent listeningStartTime in the historicalData DataFrame
     if len(historicalData) > 0:
-        print(historicalData)
         most_recent_listening = historicalData['listeningStartTime'].max()
-        most_recent_listening_timestamp = int((most_recent_listening - timedelta(days=2)).timestamp() * 1000)
+        most_recent_listening_timestamp = int((most_recent_listening - timedelta(seconds=60)).timestamp() * 1000)
         print("Most Recent Listening Timestamp: ", most_recent_listening_timestamp)
     else:
         print("No Historical Data Found")
@@ -322,7 +321,6 @@ def getLastHistoricalData(user_uri):
     return pd.DataFrame()  # Return empty DataFrame if no result
 
 def checkSpotifyHistory(user_uri, access_token):
-    print("Checking Spotify History for user: ", user_uri)
     historical_data = getSpotifyHistoricalData(user_uri, getLastHistoricalData(user_uri), access_token)
     insertSpotifyHistoricalData(historical_data)
 
