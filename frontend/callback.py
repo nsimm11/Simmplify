@@ -120,6 +120,10 @@ def getUserId():
         return newUserId
 
 def login():
+
+    if st.session_state['access_token'] != '' and st.session_state["access_token_endTime"] != '' and st.session_state["refresh_token"] != '':
+        return
+    
     query_params = st.query_params  # Use st.query_params directly
     code = query_params.get("code")  # Get the code directly
 

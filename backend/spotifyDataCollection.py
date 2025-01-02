@@ -186,7 +186,7 @@ def getSpotifyHistoricalData(userUri, historicalData, access_token):
     # Find the most recent listeningStartTime in the historicalData DataFrame
     if len(historicalData) > 0:
         most_recent_listening = historicalData['listeningStartTime'].max()
-        most_recent_listening_timestamp = int((most_recent_listening - timedelta(seconds=60)).timestamp() * 1000)
+        most_recent_listening_timestamp = int((most_recent_listening + timedelta(seconds=60)).timestamp() * 1000)
         print("Most Recent Listening Timestamp: ", most_recent_listening_timestamp)
     else:
         print("No Historical Data Found")
@@ -211,7 +211,7 @@ def getSpotifyHistoricalData(userUri, historicalData, access_token):
         # Process each song and append to the all_songs list
         for item in spotifyHistoricalData['items']:
             song_data = {
-                'playlistUri': liked_songs_uri if item['context'] is None else item['context']['uri'],
+                'playlistUri':  item["context"]["uri"] if item["context"] and item["context"]["uri"] is not None else liked_songs_uri,
                 'songUri': item['track']['uri'],
                 'percentageListened': 100,
                 'percentageSkipped': 0,
@@ -326,7 +326,7 @@ def checkSpotifyHistory(user_uri, access_token):
 
 
 # Schedule this function to run periodically
-def run_periodically(default_interval=10, inactive_interval=60):  # Default check every 10 seconds, inactive every 1 minutes
+def run_periodically(default_interval=10, inactive_interval=20):  # Default check every 10 seconds, inactive every 1 minutes
     next_check_time = {}
     max_inactive_interval = 600  # 10 minutes in seconds
     inactive_users = set()  # Track inactive users

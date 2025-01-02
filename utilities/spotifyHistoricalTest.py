@@ -32,13 +32,15 @@ def getSpotifyHistory(access_token, after_timestamp):
 def processSpotifyHistory(response):
     #Turn listening data into a dataframe, with columns: track_id, track_name, artist_name, album_name, listening_start_time, listening_end_time, percentage_listened, percentage_skipped
     listening_data = []
+
+
     for item in response["items"]:
+        print(item["context"])
         listening_data.append({
-            "track_id": item["track"]["id"],
             "track_name": item["track"]["name"],
             "artist_name": item["track"]["artists"][0]["name"],
+            "playlist_uri": item["context"]["uri"] if item["context"] and item["context"]["uri"] is not None else liked_songs_uri,
             "listening_start_time": item["played_at"],
-            "percentage_listened": 100,
         })
     listening_data_df = pd.DataFrame(listening_data)
 
@@ -55,6 +57,8 @@ after_timestamp = int(datetime.now().timestamp() - timedelta(days=30).total_seco
 listening_data_main = pd.DataFrame()
 access_token = "BQDXJZ7JTlVOSsZf0kFpbu0y0IG17dDdC-1pB-L_jNt-XonEMKyGO8VY_V4AX0pFCjPI03M-5QfCDByr9NCqOH0ijeRSo1ZjIcWV5rAZ3hq6Ko7KoeQvNd3acia_LxKMXGQZzQEbtxDbr14icyJdlyY7F5eIKgxz-L9lj0luMBjlkNfmXA-g3ZK--vL92qYv"
 
+liked_songs_uri = "spotify:user:nsimm22:collection"
+
 while loop_limit > 0:
     response = getSpotifyHistory(access_token, after_timestamp)
     if response is None or "items" not in response or len(response["items"]) == 0:
@@ -64,12 +68,13 @@ while loop_limit > 0:
     listening_data_main = pd.concat([listening_data_main, listening_data])
     
     # Update after_timestamp to the played_at of the last track in the current response
-    after_timestamp = int(datetime.fromisoformat(response["items"][-1]["played_at"].replace("Z", "+00:00")).timestamp() * 1000)  # Convert to milliseconds
+    after_timestamp = int(response["cursors"]["after"])
 
     loop_limit -= 1  # Decrement loop limit
     time.sleep(1)
 
 print(len(listening_data_main))
 listening_data_main = listening_data_main.reset_index(drop=True)
+listening_data_main = listening_data_main.sort_values(by="listening_start_time", ascending=False)
 listening_data_main.drop_duplicates(subset=["listening_start_time"], keep="first", inplace=True)
 print(listening_data_main)
