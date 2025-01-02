@@ -508,7 +508,7 @@ def get_artist_image_url(artist_name):
 @st.cache_data
 def get_playlist_image_url(playlistUri):
 
-    search_url = "https://api.spotify.com/v1/playlists/" + str(playlistUri)
+    search_url = "https://api.spotify.com/v1/playlists/" + str(playlistUri.split(":")[2])
     response = submitRequest(search_url, "Get Playlist Image", {})
 
     st.write(search_url, response)
@@ -523,8 +523,6 @@ def get_playlist_image_url(playlistUri):
 # Function to display statistics for artists or songs
 def display_stats(column, title, statType, display_percentage):
     st.markdown(f"<h4 style='color: #1DB954;'>{title}</h4>", unsafe_allow_html=True)
-
-    st.write(column)
 
     count = 1
     if len(column) > 0:
