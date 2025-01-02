@@ -529,11 +529,9 @@ def display_stats(column, title, is_artist, display_percentage):
         with cols[2]:
             if is_artist:
                 artist_image_url = get_artist_image_url(item.artistName)
-                st.write(artist_image_url)
                 st.image(artist_image_url, width=80)
             else:
                 album_cover_url = get_album_cover_url(item.songName)
-                st.write(artist_image_url)
                 st.image(album_cover_url, width=80)
 
         # Display percentage listened or skipped
