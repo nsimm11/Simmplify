@@ -445,7 +445,7 @@ def get_album_cover_url(song_name):
 def search_artist_image_bySongUri(artistName):
 
     #First look for songUris in SONGINFO by artistName, if there are multiple artist names, take the first one by delimiting by ","
-    songUri = getQuery("SELECT songUri FROM SONGINFO WHERE artistName = ?", [artistName.split(",")[0]])
+    songUri = getQuery("SELECT songUri FROM SONGINFO WHERE artistName = ?", artistName.split(",")[0])
 
     #Check if query comes back empty
     if len(songUri) == 0:
