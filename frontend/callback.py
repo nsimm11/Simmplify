@@ -506,8 +506,16 @@ def get_artist_image_url(artist_name):
     else: return artist_image_url
 
 @st.cache_data
-def get_playlist_image_url(playlist_name):
-    return "https://via.placeholder.com/150/CCCCCC/FFFFFF?text=No+Image"  # Placeholder grey box
+def get_playlist_image_url(playlistUri):
+
+    search_url = "https://api.spotify.com/v1/playlists/" + str(playlistUri)
+    response = submitRequest(search_url, "Get Playlist Image", {})
+
+    if response and "images" in response and response["images"]:
+        url = response["images"][0]["url"]
+        return url
+    else:
+        return "https://via.placeholder.com/150/CCCCCC/FFFFFF?text=No+Image"  # Placeholder grey box
 
 
 # Function to display statistics for artists or songs
