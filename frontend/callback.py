@@ -527,9 +527,11 @@ def display_stats(column, title, is_artist, display_percentage):
         with cols[2]:
             if is_artist:
                 artist_image_url = get_artist_image_url(item.artistName)
+                st.write(artist_image_url)
                 st.image(artist_image_url, width=80)
             else:
                 album_cover_url = get_album_cover_url(item.songName)
+                st.write(album_cover_url)
                 st.image(album_cover_url, width=80)
 
         # Display percentage listened or skipped
@@ -565,7 +567,7 @@ if code == None and st.session_state['auth_code'] == None:
 
     st.markdown(f"""
             <div style="display: flex; justify-content: center;">
-                <a href="{auth_url}" target="_blank">
+                <a href="{auth_url}">
                     <button class="button" style="background-color: #1DB954; text-align: center; color: #FFFFFF; border: none; padding: 15px 30px; font-size: 1rem; border-radius: 25px; cursor: pointer;">
                         Authenticate with Spotify
                     </button>
