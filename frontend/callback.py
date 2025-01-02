@@ -12,8 +12,6 @@ import pyodbc
 import pytz
 from streamlit_extras.switch_page_button import switch_page
 
-# Clear session state at the start of the script
-st.session_state.clear()  # Clear the session state
 
 st.set_page_config(
     layout="wide", 
