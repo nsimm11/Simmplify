@@ -24,8 +24,6 @@ pd.options.display.float_format = '{:.2f}'.format
 # Use certifi's certificate bundle
 os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
 
-st.write(st.session_state)
-
 # Setup session State
 if 'auth_code' not in st.session_state:
     st.session_state['auth_code'] = None
@@ -119,18 +117,12 @@ def getUserId():
 
 def login():
 
-    st.write("Access Token: ",    st.session_state['access_token'])
-    st.write("Access Token End Time: ", st.session_state["access_token_endTime"])
-    st.write("Refresh Token: ", st.session_state["refresh_token"]) 
-    st.write("User: ", st.session_state['UserUri'])
-
     if st.session_state['access_token'] != '' and st.session_state["access_token_endTime"] != '' and st.session_state["refresh_token"] != '':
         st.toast("You are already logged in!")
         return
     
     query_params = st.query_params  # Use st.query_params directly
     code = query_params.get("code")  # Get the code directly
-    st.write("Code: ", code)
 
     if code:
         # Store the code in session state
@@ -138,11 +130,6 @@ def login():
 
         # Proceed with token exchange using the new function
         exchange_code_for_token(code)  # Call the new function to exchange the code for a token
-
-        st.write("Access Token: ",    st.session_state['access_token'])
-        st.write("Access Token End Time: ", st.session_state["access_token_endTime"])
-        st.write("Refresh Token: ", st.session_state["refresh_token"]) 
-
 
     else:
         st.warning("Authorization code not found in URL. Please try again.")
