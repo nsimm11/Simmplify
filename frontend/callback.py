@@ -307,7 +307,8 @@ def getHistoricalData(userUri):
 
 def format_historical_data(df, playlist_name):
     #Limit to the last 150 rows since the data will become too large to display
-    #df = df.iloc[-150:]
+    df = df.sort_values(by='listeningStartTime', ascending=False)
+    df = df.head(150)
     
     # Add playlist name to the DataFrame
     if playlist_name != "ALL":
