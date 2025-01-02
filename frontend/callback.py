@@ -121,7 +121,10 @@ def getUserId():
 
 def login():
 
+    st.write(st.session_state)
+
     if st.session_state['access_token'] != '' and st.session_state["access_token_endTime"] != '' and st.session_state["refresh_token"] != '':
+        st.toast("You are already logged in!")
         return
     
     query_params = st.query_params  # Use st.query_params directly
