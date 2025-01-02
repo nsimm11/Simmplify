@@ -369,7 +369,7 @@ def run_periodically(default_interval=10, inactive_interval=20):  # Default chec
                 if user_uri not in inactive_intervals:
                     inactive_intervals[user_uri] = inactive_interval
                 else:
-                    inactive_intervals[user_uri] = inactive_intervals[user_uri] + inactive_interval
+                    inactive_intervals[user_uri] = min(max_inactive_interval, 2*(inactive_intervals[user_uri]))
 
                 next_check_time[user_uri] = current_time + inactive_intervals[user_uri]
                 inactive_users.add(user_uri)  # Mark user as inactive
@@ -383,8 +383,9 @@ def run_periodically(default_interval=10, inactive_interval=20):  # Default chec
                 # Check if the user was previously inactive
                 if user_uri in inactive_users:
                     print(f"User {user_uri} has returned from inactivity. Fetching historical data.")
-                    # Call the function to get historical data
                     checkSpotifyHistory(user_uri, access_token)
+
+                    inactive_intervals.pop(user_uri)
                     inactive_users.remove(user_uri)  # Remove user from inactive set
 
 
