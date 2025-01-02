@@ -162,11 +162,7 @@ def process_playback_data(previous_playback, current_playback, user_uri):
             print(f"Processed data for track {previous_track_id}: {percentage_listened:.2f}% listened, {percentage_skipped:.2f}% skipped, started at {listening_start_time}")
 
 #General Request call for Spotify
-def submitRequest(endpoint, functionName, params):
-
-    # Get the access token from the SpotifyOAuth object
-    token_info = sp_oauth.get_cached_token()
-    access_token = token_info['access_token']
+def submitRequest(endpoint, functionName, params, access_token):
 
     # Define the endpoint for currently playing track
     headers = {
@@ -186,12 +182,13 @@ def submitRequest(endpoint, functionName, params):
     
     return None
 
-def getSpotifyHistoricalData(userUri, historicalData):
+def getSpotifyHistoricalData(userUri, historicalData, access_token):
     # Find the most recent listeningStartTime in the historicalData DataFrame
-    if not historicalData.empty:
+    if len(historicalData) > 0:
+        print(historicalData)
         most_recent_listening = historicalData['listeningStartTime'].max()
-        # Add 60 seconds to the most recent listening timestamp
-        most_recent_listening_timestamp = int((most_recent_listening + timedelta(seconds=60)).timestamp() * 1000)
+        most_recent_listening_timestamp = int((most_recent_listening - timedelta(days=2)).timestamp() * 1000)
+        print("Most Recent Listening Timestamp: ", most_recent_listening_timestamp)
     else:
         print("No Historical Data Found")
         return pd.DataFrame(columns=['playlistUri', 'songUri', 'listenedPercentage', 'skippedPercentage', 'listeningStartTime'])
@@ -204,7 +201,8 @@ def getSpotifyHistoricalData(userUri, historicalData):
         spotifyHistoricalData = submitRequest(
             "https://api.spotify.com/v1/me/player/recently-played", 
             "Get Users Recently Played", 
-            {"after": most_recent_listening_timestamp, "limit": 50}
+            {"after": most_recent_listening_timestamp, "limit": 50},
+            access_token
         )
 
         if not spotifyHistoricalData or 'items' not in spotifyHistoricalData:
@@ -262,8 +260,9 @@ def getSpotifyHistoricalData(userUri, historicalData):
     return spotifyHistoricalData
 
 def insertSpotifyHistoricalData(spotifyHistoricalData):
+
     # Ensure spotifyHistoricalData is not empty
-    if spotifyHistoricalData.empty:
+    if len(spotifyHistoricalData) == 0:
         print("No data to insert")
         return
 
@@ -297,9 +296,36 @@ def insertSpotifyHistoricalData(spotifyHistoricalData):
         print(f"Found {len(data_to_insert)} songs to insert while you were away")
 
 def getLastHistoricalData(user_uri):
-    query = "SELECT TOP 1 * FROM LISTENERDATA WHERE userUri = ? ORDER BY listeningStartTime DESC"
+    # Modify the query to convert datetimeoffset to datetime
+    query = """
+    SELECT TOP 1 
+        userUri, playlistUri, songUri, percentageListened, percentageSkipped, 
+        CAST(listeningStartTime AS datetime) AS listeningStartTime 
+    FROM LISTENERDATA 
+    WHERE userUri = ? 
+    ORDER BY listeningStartTime DESC
+    """
     cursor.execute(query, (user_uri,))
-    return cursor.fetchone()
+    result = cursor.fetchone()
+    
+    # Ensure the listeningStartTime is timezone-aware
+    if result and result[5]:  # Assuming the 5th index is listeningStartTime
+        listening_start_time = result[5]
+        if listening_start_time.tzinfo is None:
+            listening_start_time = pytz.utc.localize(listening_start_time)
+        result = list(result)  # Convert to list to modify
+        result[5] = listening_start_time  # Update the listeningStartTime
+        
+        # Create a DataFrame from the result
+        return pd.DataFrame([result], columns=['userUri', 'playlistUri', 'songUri', 'percentageListened', 'percentageSkipped', 'listeningStartTime'])
+
+    return pd.DataFrame()  # Return empty DataFrame if no result
+
+def checkSpotifyHistory(user_uri, access_token):
+    print("Checking Spotify History for user: ", user_uri)
+    historical_data = getSpotifyHistoricalData(user_uri, getLastHistoricalData(user_uri), access_token)
+    insertSpotifyHistoricalData(historical_data)
+
 
 # Schedule this function to run periodically
 def run_periodically(default_interval=10, inactive_interval=60):  # Default check every 10 seconds, inactive every 1 minutes
@@ -321,9 +347,7 @@ def run_periodically(default_interval=10, inactive_interval=60):  # Default chec
                 continue
 
             if first_run:
-                historical_data = getSpotifyHistoricalData(user_uri, getLastHistoricalData(user_uri))
-                # Insert the historical data into the database
-                insertSpotifyHistoricalData(historical_data)
+                checkSpotifyHistory(user_uri, access_token)
 
 
             print(f"Processing playback data for user {user_uri}")
@@ -356,11 +380,7 @@ def run_periodically(default_interval=10, inactive_interval=60):  # Default chec
                 if user_uri in inactive_users:
                     print(f"User {user_uri} has returned from inactivity. Fetching historical data.")
                     # Call the function to get historical data
-                    historical_data = getSpotifyHistoricalData(user_uri, pd.DataFrame())
-                    # Insert the historical data into the database
-                    insertSpotifyHistoricalData(historical_data)
-
-                    print(f"Historical Data: {historical_data}")
+                    checkSpotifyHistory(user_uri, access_token)
 
                     inactive_users.remove(user_uri)  # Remove user from inactive set
 

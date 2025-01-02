@@ -294,6 +294,7 @@ def getHistoricalData(userUri):
     FROM LISTENERDATA ld
     JOIN SONGINFO si ON ld.songUri = si.songUri
     WHERE ld.userUri = ?
+    ORDER BY ld.listeningStartTime DESC
     """
     historicalData = getQuery(historicalDataQuery, [userUri])
     
