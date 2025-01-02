@@ -536,7 +536,7 @@ def display_stats(column, title, statType, display_percentage):
                 elif statType == "Song":
                     st.markdown(f"**{item.songName}** by **{item.artistName}**")
                 elif statType == "Playlist":
-                    st.markdown(f"**{item.playlistName}**")
+                    st.markdown(f"**{item.playlistUri}**")
 
             # Display artist image or album cover
             with cols[2]:
@@ -547,7 +547,7 @@ def display_stats(column, title, statType, display_percentage):
                     album_cover_url = get_album_cover_url(item.songName)
                     st.image(album_cover_url, width=80)
                 elif statType == "Playlist":
-                    playlist_image_url = get_playlist_image_url(item.playlistName)
+                    playlist_image_url = get_playlist_image_url(item.playlistUri)
                     st.image(playlist_image_url, width=80)
 
             # Display percentage listened or skipped
