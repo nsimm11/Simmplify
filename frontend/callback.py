@@ -54,7 +54,7 @@ if 'previous_song_name' not in st.session_state:
     st.session_state['previous_song_name'] = None
 
 # Scopes required for accessing user's currently playing track
-SCOPE = "user-read-playback-state user-read-currently-playing"
+SCOPE = "user-read-playback-state user-read-currently-playing user-read-recently-played"
 
 sp_oauth = SpotifyOAuth(client_id=st.secrets["CLIENT_ID"], 
                         client_secret=st.secrets["CLIENT_SECRET"],

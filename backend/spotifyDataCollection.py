@@ -330,7 +330,7 @@ def checkSpotifyHistory(user_uri, access_token):
 # Schedule this function to run periodically
 def run_periodically(default_interval=10, inactive_interval=60):  # Default check every 10 seconds, inactive every 1 minutes
     next_check_time = {}
-    max_inactive_interval = 609  # 10 minutes in seconds
+    max_inactive_interval = 600  # 10 minutes in seconds
     inactive_users = set()  # Track inactive users
     inactive_intervals = {}  # Track inactive intervals for each user
 
@@ -366,12 +366,18 @@ def run_periodically(default_interval=10, inactive_interval=60):  # Default chec
 
             # Check if user is inactive
             if current_playback is None or bool(current_playback['is_playing']) == False:
-                print(f"User {user_uri} is inactive. Setting next check time to {inactive_interval} seconds.")
-                next_check_time[user_uri] = current_time + inactive_interval
+
+                #SET INTERVAL TO 60 SECONDS IF NOT SET, ELSE ADD 60 SECONDS TO THE INTERVAL
+                if user_uri not in inactive_intervals:
+                    inactive_intervals[user_uri] = inactive_interval
+                else:
+                    inactive_intervals[user_uri] = inactive_intervals[user_uri] + inactive_interval
+
+                next_check_time[user_uri] = current_time + inactive_intervals[user_uri]
                 inactive_users.add(user_uri)  # Mark user as inactive
-                
                 # Increase inactive interval by 2 minutes, up to a maximum of 20 minutes
-                inactive_intervals[user_uri] = min(inactive_intervals.get(user_uri, inactive_interval) + 60, max_inactive_interval)
+                print(f"User {user_uri} is inactive. Setting next check time to {inactive_intervals[user_uri]} seconds.")
+
             else:
                 # User is active, reset inactive interval
                 next_check_time[user_uri] = current_time + default_interval
@@ -381,10 +387,8 @@ def run_periodically(default_interval=10, inactive_interval=60):  # Default chec
                     print(f"User {user_uri} has returned from inactivity. Fetching historical data.")
                     # Call the function to get historical data
                     checkSpotifyHistory(user_uri, access_token)
-
                     inactive_users.remove(user_uri)  # Remove user from inactive set
 
-                    next_check_time[user_uri] = current_time + inactive_intervals.get(user_uri, inactive_interval)
 
         # Sleep for a short time to prevent a tight loop
         if first_run:
