@@ -303,16 +303,15 @@ def getHistoricalData(userUri):
     historicalData['listeningStartTime'] = historicalData['listeningStartTime'].apply(
         lambda x: x.replace(tzinfo=pytz.utc).astimezone(user_timezone).replace(microsecond=0)
     )
+
+    st.write(historicalData["listeningStartTime"].head())
     
-
-    st.write(historicalData["listeningStartTime"].max())
-
     return historicalData
 
 def format_historical_data(df, playlist_name):
     #Limit to the last 150 rows since the data will become too large to display
-    #df = df.sort_values(by='listeningStartTime', ascending=False)
-    #df = df.head(150)
+    df = df.sort_values(by='listeningStartTime', ascending=False)
+    df = df.head(150)
     
     # Add playlist name to the DataFrame
     if playlist_name != "ALL":
