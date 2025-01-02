@@ -155,6 +155,7 @@ def exchange_code_for_token(code):
     }
     
     response = requests.post(token_url, data=payload)
+    st.write("Token Response: ", response.status_code)
     
     if response.status_code == 200:
         token_info = response.json()
@@ -481,8 +482,7 @@ else:
         </div>
     """, unsafe_allow_html=True)
 
-    # Call the login function at the start of the script
-    login()
+
 
     st.markdown(
         """<div style="text-align: left">
@@ -497,6 +497,9 @@ else:
             <h3 style="color: #1DB954; font-size: 2em;">Simmplify Data:</h3>
         </div>
     """, unsafe_allow_html=True)
+
+    # Call the login function at the start of the script
+    login()
 
     #Pull user information from database or spotify
     userName, userUri, userId = getUserInfo()
