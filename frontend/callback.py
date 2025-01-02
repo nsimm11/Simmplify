@@ -514,8 +514,6 @@ def get_playlist_image_url(playlist_name):
 def display_stats(column, title, statType, display_percentage):
     st.markdown(f"<h4 style='color: #1DB954;'>{title}</h4>", unsafe_allow_html=True)
 
-    st.write(column)
-
     count = 1
     if len(column) > 0:
         for item in column.itertuples():
@@ -536,7 +534,7 @@ def display_stats(column, title, statType, display_percentage):
                 elif statType == "Song":
                     st.markdown(f"**{item.songName}** by **{item.artistName}**")
                 elif statType == "Playlist":
-                    st.markdown(f"**{item.playlistUri}**")
+                    st.markdown(f"**{userPlaylists[userPlaylists['uri'] == item.playlistUri]['name'].values[0]}**")
 
             # Display artist image or album cover
             with cols[2]:
