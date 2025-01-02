@@ -505,9 +505,10 @@ def display_stats(column, title, is_artist, display_percentage):
     st.markdown(f"<h4 style='color: #1DB954;'>{title}</h4>", unsafe_allow_html=True)
 
     count = 1
-    for item in column.itertuples():
-        # Adjust column sizes: rank, name, image, and percentage
-        cols = st.columns([0.5, 1.5, 1, 1])
+    if len(column) > 0:
+        for item in column.itertuples():
+            # Adjust column sizes: rank, name, image, and percentage
+            cols = st.columns([0.5, 1.5, 1, 1])
 
         # Display rank
         with cols[0]:
