@@ -633,6 +633,11 @@ else:
     """, unsafe_allow_html=True)
 
     # Call the login function at the start of the script
+
+    st.write(st.session_state['access_token'])
+    st.write(st.session_state["access_token_endTime"])
+    st.write(st.session_state["refresh_token"]) 
+
     login()
 
     #Pull user information from database or spotify
