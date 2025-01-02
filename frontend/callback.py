@@ -654,10 +654,9 @@ else:
     st.markdown("""
         <div style="text-align: left">
             <hr style="border: 1px solid #1DB954; width: 100%" />
-            <h3 style="color: #1DB954; font-size: 2em;">Advanced Stats:</h3>
+            <h3 style="color: #1DB954; font-size: 2em;">Biggest Hits or Misses:</h3>
         </div>
     """, unsafe_allow_html=True)
-
 
     advancedStats = st.empty()
 
