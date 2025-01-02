@@ -508,10 +508,11 @@ def get_artist_image_url(artist_name):
 @st.cache_data
 def get_playlist_image_url(playlistUri):
 
-    search_url = "https://api.spotify.com/v1/playlists/" + str(playlistUri.split(":")[2])
-    response = submitRequest(search_url, "Get Playlist Image", {})
+    if "playlist:" in playlistUri:
+        playlistUri = playlistUri.split(":")[2]
 
-    st.write(search_url, response)
+    search_url = "https://api.spotify.com/v1/playlists/" + str(playlistUri)
+    response = submitRequest(search_url, "Get Playlist Image", {})
 
     if response and "images" in response and response["images"]:
         url = response["images"][0]["url"]
