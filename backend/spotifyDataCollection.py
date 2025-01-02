@@ -296,6 +296,10 @@ def insertSpotifyHistoricalData(spotifyHistoricalData):
     if len(data_to_insert) > 0:
         print(f"Found {len(data_to_insert)} songs to insert while you were away")
 
+def getLastHistoricalData(user_uri):
+    query = "SELECT TOP 1 * FROM LISTENERDATA WHERE userUri = ? ORDER BY listeningStartTime DESC"
+    cursor.execute(query, (user_uri,))
+    return cursor.fetchone()
 
 # Schedule this function to run periodically
 def run_periodically(default_interval=10, inactive_interval=60):  # Default check every 10 seconds, inactive every 1 minutes
@@ -317,7 +321,7 @@ def run_periodically(default_interval=10, inactive_interval=60):  # Default chec
                 continue
 
             if first_run:
-                historical_data = getSpotifyHistoricalData(user_uri, pd.DataFrame())
+                historical_data = getSpotifyHistoricalData(user_uri, getLastHistoricalData(user_uri))
                 # Insert the historical data into the database
                 insertSpotifyHistoricalData(historical_data)
 
