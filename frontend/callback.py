@@ -24,6 +24,8 @@ pd.options.display.float_format = '{:.2f}'.format
 # Use certifi's certificate bundle
 os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
 
+st.write(st.session_state)
+
 # Setup session State
 if 'auth_code' not in st.session_state:
     st.session_state['auth_code'] = None
@@ -127,8 +129,10 @@ def login():
     
     query_params = st.query_params  # Use st.query_params directly
     code = query_params.get("code")  # Get the code directly
+    st.write("Code: ", code)
 
     if code:
+
         # Store the code in session state
         st.session_state['auth_code'] = code  
 
