@@ -152,8 +152,6 @@ def exchange_code_for_token(auth_code):
     
     if response.status_code == 200:
         token_info = response.json()
-        st.write("response from login: ", token_info)
-        st.toast("Updating Session State")
         st.session_state['access_token'] = token_info['access_token']
         st.session_state["access_token_endTime"] = datetime.now(pytz.utc) + timedelta(seconds=token_info['expires_in'])
         st.session_state["refresh_token"] = token_info['refresh_token']
@@ -709,8 +707,6 @@ else:
     if st.session_state["UserUri"] != userUri and st.session_state["UserUri"] != "":
         st.cache_data.clear()
         userName, userUri, userId = getUserInfo()
-    st.write(st.session_state)
-    st.write("userUri: ", userUri, "st.session_state['UserUri']: ", st.session_state["UserUri"], )
     if userName is None and userUri is None and userId is None:
         st.warning("No user information found, please authenticate again.")
         st.stop()
