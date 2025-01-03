@@ -161,7 +161,7 @@ def getUserInfo():
         requestsAsJsonUser = submitRequest("https://api.spotify.com/v1/me", "Get Users PlaybackState", {})
         
         if requestsAsJsonUser is None:
-            st.markdown("Failed to retrieve user information. Please re-authenticate from the login page <a href='/'>here</a>.")
+            st.markdown("Failed to retrieve user information. Please re-authenticate from the login page <a href='/'>here</a>.", unsafe_allow_html=True)
             return None, None, None
 
         userUri = requestsAsJsonUser["uri"]
