@@ -719,7 +719,7 @@ else:
 
     historical = st.empty()
 
-    image_path = "C:/Users/NSimms/OneDrive - Geosyntec/Desktop/General Coding/Simmplify/frontend/images/background3.jpg"
+    image_path = "C:/Users/NSimms/OneDrive - Geosyntec/Desktop/General Coding/Simmplify/frontend/DSC03596.JPG"
     
     st.markdown(f"""
         <div style="text-align: center; padding: 10px; border: 2px solid #1DB954; border-radius: 10px; background-color: rgba(255, 255, 255, 0.0);">
@@ -780,7 +780,7 @@ else:
 
                 if "album.images" in userCurrentSongPlayingDict and userCurrentSongPlayingDict["album.images"] != "":
                     c3.image(userCurrentSongPlayingDict["album.images"], width=150)
-                c2.progress(float(userCurrentSongPlayingDict["SongCurrentPosition"]) / userCurrentSongPlayingDict["duration_ms"])
+                    c2.progress(float(userCurrentSongPlayingDict["SongCurrentPosition"]) / userCurrentSongPlayingDict["duration_ms"])
                 c1.markdown(f"User: {st.session_state['UserName']}")
             else:
                 c2.markdown("## Paused")
