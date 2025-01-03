@@ -706,7 +706,7 @@ else:
     login()
     #Pull user information from database or spotify
     userName, userUri, userId = getUserInfo()
-    if st.session_state["UserUri"] != userUri:
+    if st.session_state["UserUri"] != userUri and st.session_state["UserUri"] != "":
         st.cache_data.clear()
         userName, userUri, userId = getUserInfo()
     st.write(st.session_state)
