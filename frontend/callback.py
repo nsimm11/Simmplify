@@ -850,7 +850,6 @@ else:
             with as3:
                 display_stats(topPlaylists, "Most Played Playlists", "Playlist", display_percentage='listened')
 
-
         with biggestMisses.container():
             # Clear previous columns
             bm1, bm2, bm3 = st.columns(3)
