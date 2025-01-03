@@ -101,65 +101,68 @@ def get_current_playback_data(access_token):
 
 # Function to process playback data and calculate percentage listened
 def process_playback_data(previous_playback, current_playback, user_uri):
-    if previous_playback and current_playback:
-        previous_track_id = previous_playback['item']['id']
-        current_track_id = current_playback['item']['id']
+    if previous_playback and current_playback and "item" in previous_playback and "item" in current_playback:
+        if previous_playback['item'] is not None and current_playback['item'] is not None and "id" in previous_playback['item'] and "id" in current_playback['item']:
+            previous_track_id = previous_playback['item']['id']
+            current_track_id = current_playback['item']['id']   
         
-        if previous_track_id != current_track_id:
-            print(f"New track detected: {current_track_id}")
-            
-            # Calculate percentage listened
-            previous_position_ms = previous_playback['progress_ms']
-            previous_track_length_ms = previous_playback['item']['duration_ms']
-            
-            # Check if within 10 seconds of the end
-            if previous_track_length_ms - previous_position_ms <= 12000:
-                percentage_listened = 100.0
-            else:
-                percentage_listened = (previous_position_ms / previous_track_length_ms) * 100
-            
-            percentage_skipped = 100 - int(percentage_listened)
-            print(f"Calculated listening percentages: {percentage_listened:.2f}% listened, {percentage_skipped:.2f}% skipped")
-            
-            # Extract previous playlist URI if available
-            previous_playlist_uri = previous_playback.get('context', {}).get('uri', None)
-            print(f"Previous Playlist URI: {previous_playlist_uri}")
-            
-            # Record the current time as the listening start time
-            listening_start_time = datetime.now(pytz.utc)
-            print(f"Listening start time recorded: {listening_start_time}")
-            
-            # Check if song info is already in SONGINFO table
-            check_song_query = "SELECT songUri FROM SONGINFO WHERE songUri = ?"
-            cursor.execute(check_song_query, (previous_track_id,))
-            song_exists = cursor.fetchone()
-            
-            if not song_exists:
-                print(f"Song {previous_track_id} not found in SONGINFO. Inserting new record.")
-                # Insert song info into SONGINFO table
-                song_name = previous_playback['item']['name']
-                artist_name = ', '.join([artist['name'] for artist in previous_playback['item']['artists']])
-                album_name = previous_playback['item']['album']['name']
-                song_length_ms = previous_playback['item']['duration_ms']
+            if previous_track_id != current_track_id:
+                print(f"New track detected: {current_track_id}")
                 
-                insert_song_info_query = """
-                INSERT INTO SONGINFO (songUri, songName, artistName, albumName, songLengthMs) 
-                VALUES (?, ?, ?, ?, ?)
+                # Calculate percentage listened
+                previous_position_ms = previous_playback['progress_ms']
+                previous_track_length_ms = previous_playback['item']['duration_ms']
+                
+                # Check if within 10 seconds of the end
+                if previous_track_length_ms - previous_position_ms <= 12000:
+                    percentage_listened = 100.0
+                else:
+                    percentage_listened = (previous_position_ms / previous_track_length_ms) * 100
+                
+                percentage_skipped = 100 - int(percentage_listened)
+                print(f"Calculated listening percentages: {percentage_listened:.2f}% listened, {percentage_skipped:.2f}% skipped")
+                
+                # Extract previous playlist URI if available
+                previous_playlist_uri = previous_playback.get('context', {}).get('uri', None)
+                print(f"Previous Playlist URI: {previous_playlist_uri}")
+                
+                # Record the current time as the listening start time
+                listening_start_time = datetime.now(pytz.utc)
+                print(f"Listening start time recorded: {listening_start_time}")
+                
+                # Check if song info is already in SONGINFO table
+                check_song_query = "SELECT songUri FROM SONGINFO WHERE songUri = ?"
+                cursor.execute(check_song_query, (previous_track_id,))
+                song_exists = cursor.fetchone()
+                
+                if not song_exists:
+                    print(f"Song {previous_track_id} not found in SONGINFO. Inserting new record.")
+                    # Insert song info into SONGINFO table
+                    song_name = previous_playback['item']['name']
+                    artist_name = ', '.join([artist['name'] for artist in previous_playback['item']['artists']])
+                    album_name = previous_playback['item']['album']['name']
+                    song_length_ms = previous_playback['item']['duration_ms']
+                    
+                    insert_song_info_query = """
+                    INSERT INTO SONGINFO (songUri, songName, artistName, albumName, songLengthMs) 
+                    VALUES (?, ?, ?, ?, ?)
+                    """
+                    cursor.execute(insert_song_info_query, (previous_track_id, song_name, artist_name, album_name, song_length_ms))
+                    conn.commit()
+                    print(f"Inserted song info for {previous_track_id}: {song_name} by {artist_name}")
+                else:
+                    print(f"Song {previous_track_id} already exists in SONGINFO.")
+                
+                # Insert into LISTENERDATA table using previous_playlist_uri
+                insert_listener_data_query = """
+                INSERT INTO LISTENERDATA (userUri, playlistUri, songUri, percentageListened, percentageSkipped, listeningStartTime) 
+                VALUES (?, ?, ?, ?, ?, ?)
                 """
-                cursor.execute(insert_song_info_query, (previous_track_id, song_name, artist_name, album_name, song_length_ms))
+                cursor.execute(insert_listener_data_query, (user_uri, previous_playlist_uri, previous_track_id, percentage_listened, percentage_skipped, listening_start_time))
                 conn.commit()
-                print(f"Inserted song info for {previous_track_id}: {song_name} by {artist_name}")
-            else:
-                print(f"Song {previous_track_id} already exists in SONGINFO.")
-            
-            # Insert into LISTENERDATA table using previous_playlist_uri
-            insert_listener_data_query = """
-            INSERT INTO LISTENERDATA (userUri, playlistUri, songUri, percentageListened, percentageSkipped, listeningStartTime) 
-            VALUES (?, ?, ?, ?, ?, ?)
-            """
-            cursor.execute(insert_listener_data_query, (user_uri, previous_playlist_uri, previous_track_id, percentage_listened, percentage_skipped, listening_start_time))
-            conn.commit()
-            print(f"Processed data for track {previous_track_id}: {percentage_listened:.2f}% listened, {percentage_skipped:.2f}% skipped, started at {listening_start_time}")
+                print(f"Processed data for track {previous_track_id}: {percentage_listened:.2f}% listened, {percentage_skipped:.2f}% skipped, started at {listening_start_time}")
+    else:
+        print("No playback data found")
 
 #General Request call for Spotify
 def submitRequest(endpoint, functionName, params, access_token):
@@ -193,7 +196,7 @@ def getSpotifyHistoricalData(userUri, historicalData, access_token):
         return pd.DataFrame(columns=['playlistUri', 'songUri', 'listenedPercentage', 'skippedPercentage', 'listeningStartTime'])
 
     all_songs = []
-    liked_songs_uri = f'spotify:user:{userUri}:collection'  # Define the Liked Songs URI
+    liked_songs_uri = f'spotify:user:{userUri.split(":")[2]}:collection'  # Define the Liked Songs URI
 
     while True:
         # Fetch historical data from Spotify since the most recent listeningStartTime
@@ -357,7 +360,7 @@ def run_periodically(default_interval=10, inactive_interval=20):  # Default chec
             
             # Retrieve previous playback data if available
             previous_playback = previous_playback_data.get(user_uri)
-            
+
             # Process playback data for the user
             process_playback_data(previous_playback=previous_playback, current_playback=current_playback, user_uri=user_uri)
             

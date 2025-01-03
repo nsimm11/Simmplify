@@ -746,7 +746,7 @@ else:
     sde1, sde2, sde3 = st.columns(3)
     selectedPlaylistName = sde1.selectbox("Filter by Playlist", placeholder="-", options=playlist_options)
     if len(summarizedData) > 0:
-        playMin = sde2.slider("Minimum Number of Plays", min_value=1, max_value=max(summarizedData["Play Count"]), value=1)
+        playMin = sde2.slider("Minimum Number of Plays", min_value=1, max_value=max(summarizedData["Play Count"])+1, value=1)
         scoreMin_start = min(summarizedData["Preference Score"])
         scoreMin_end = max(summarizedData["Preference Score"])
         scoreMin, scoreMax = sde3.slider("Preference Score Maximum", min_value=scoreMin_start, max_value=scoreMin_end, value=[scoreMin_start, scoreMin_end])
