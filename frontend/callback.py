@@ -631,7 +631,6 @@ if code == None and st.session_state['auth_code'] == None:
                 <p>The Simmplify Data Section will calculate and sort your playlist songs by how often they are skipped.</p>
                 <p>Use the buttons to automatically remove songs based on preference score.</p>
                 <p>The Historical Data Section will show you a list of every song you have listened to and listening percentage.</p>
-                <hr style="border: 1px solid #1DB954; width: 100%; margin: 20px auto;" />
 
             </div>
             """,
