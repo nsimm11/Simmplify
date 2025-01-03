@@ -556,7 +556,7 @@ def get_playlist_image_url(playlistUri):
     search_url = "https://api.spotify.com/v1/playlists/" + str(playlistUri)
     response = submitRequest(search_url, "Get Playlist Image", {})
 
-    if response and "images" in response and response["images"]:
+    if "images" in response and len(response["images"]) > 0:
         url = response["images"][0]["url"]
         return url
     else:
