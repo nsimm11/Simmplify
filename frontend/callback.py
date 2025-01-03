@@ -4,7 +4,7 @@ import os
 import numpy as np
 import requests
 import certifi
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 from pandas import json_normalize
 import time
@@ -81,7 +81,12 @@ def getQuery(query, params=None):
     Data = pd.DataFrame.from_records(cursor.fetchall(), columns=[col[0] for col in cursor.description])
     return Data
     
-def getUserId():
+def getUserId(userUri):
+
+    if userUri != "" and st.session_state["UserUri"] == "":
+        st.session_state["UserUri"] = userUri
+        userTokens = getQuery("SELECT * FROM USERTOKENS WHERE userUri = ?", [userUri])
+
     # Ensure the correct table name and schema
     userIdQuery = "SELECT * FROM dbo.USERS WHERE userUri = ?"
     userUri = st.session_state['UserUri'].strip()
@@ -127,18 +132,17 @@ def login():
     if code:
         # Store the code in session state
         st.session_state['auth_code'] = code  
-
         # Proceed with token exchange using the new function
         exchange_code_for_token(code)  # Call the new function to exchange the code for a token
 
     else:
         st.warning("Authorization code not found in URL. Please try again.")
 
-def exchange_code_for_token(code):
+def exchange_code_for_token(auth_code):
     token_url = "https://accounts.spotify.com/api/token"
     payload = {
         'grant_type': 'authorization_code',
-        'code': code,
+        'code': auth_code,
         'redirect_uri': st.secrets["REDIRECT_URI"],
         'client_id': st.secrets["CLIENT_ID"],
         'client_secret': st.secrets["CLIENT_SECRET"]
@@ -154,8 +158,9 @@ def exchange_code_for_token(code):
         st.session_state["refresh_token"] = token_info['refresh_token']
         st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
     else:
-        st.warning(f"Error fetching the token: {response.status_code} - {response.text}")
+        st.toast(f"Error fetching the token: {response.status_code} - {response.text}")
 
+@st.cache_data
 def getUserInfo():
     try:
         requestsAsJsonUser = submitRequest("https://api.spotify.com/v1/me", "Get Users PlaybackState", {})
@@ -179,16 +184,30 @@ def getUserInfo():
     
 
 def storeTokensInDatabase():
-    db_id = st.session_state['UserDbId']
-    access_token = st.session_state['access_token']
-    expires_at_utc = st.session_state["access_token_endTime"] + timedelta(minutes=3)
-    refresh_token = st.session_state['refresh_token']
-    userUri = st.session_state.get('UserUri', '').strip()
 
-    if not userUri:
+    if not st.session_state["UserUri"]:
         errorLog("UserUri is empty. Cannot proceed with token operations.")
         st.warning("UserUri is not set. Please try logging in again.")
         return
+    elif st.session_state["UserUri"] != "" and st.session_state["refresh_token"] == "":
+        userTokens = getQuery("SELECT * FROM USERTOKENS WHERE userUri = ?", [st.session_state["UserUri"]])
+        if len(userTokens) > 0:
+            if pd.to_datetime(userTokens.iloc[0]['accessTokenEndTime']).tz_localize('UTC') > datetime.now(pytz.utc):
+                st.session_state['access_token'] = userTokens.iloc[0]['accessToken']
+                st.session_state["access_token_endTime"] = pd.to_datetime(userTokens.iloc[0]['accessTokenEndTime']).tz_localize('UTC')
+                st.session_state["refresh_token"] = userTokens.iloc[0]['refreshToken']
+                st.session_state['UserDbId'] = int(userTokens.iloc[0]['dbID'])
+                st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
+            else:
+                st.toast("Your access token has expired. Please re-authenticate.")
+        else:
+            st.toast("No user tokens found. Please re-authenticate.")
+
+    db_id = st.session_state['UserDbId']
+    access_token = st.session_state['access_token']
+    expires_at_utc = pd.to_datetime(st.session_state["access_token_endTime"]).tz_convert('UTC') + timedelta(minutes=3)
+    refresh_token = st.session_state['refresh_token']
+    userUri = st.session_state.get('UserUri', '').strip()
 
     # Check if a token entry already exists for this user
     check_token_query = "SELECT id FROM USERTOKENS WHERE dbID = ?"
@@ -655,7 +674,6 @@ if code == None and st.session_state['auth_code'] == None:
 
 else:
     #After authentication, display the player and simmplify page
-    
     st.markdown("""
         <div style="text-align: center; margin-top: 10px;">
             <h1 style="color: #1DB954; font-size: 4em; margin-bottom: 10px;">SIMMPLIFY</h1>
@@ -685,9 +703,9 @@ else:
     #Pull user information from database or spotify
     userName, userUri, userId = getUserInfo()
     if userName is None and userUri is None and userId is None:
-        st.write("No user information found, please authenticate again.")
+        st.warning("No user information found, please authenticate again.")
         st.stop()
-    useDbId = getUserId()
+    useDbId = getUserId(userUri)
     storeTokensInDatabase()
 
     # Display historical data for all playlists
@@ -850,7 +868,7 @@ else:
                 display_stats(bottomPlaylists, "Most Skipped Playlists", "Playlist", display_percentage='skipped')
 
         with historical.container():
-            st.dataframe(historicalData[["Playlist Name", "Song Name", "Listened Percentage", "Listening Start Time"]], hide_index=True, use_container_width=True)
+            st.dataframe(historicalData, hide_index=True, use_container_width=True)
         
 
         time.sleep(1)
