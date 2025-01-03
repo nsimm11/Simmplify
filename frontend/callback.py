@@ -521,6 +521,19 @@ def get_playlist_image_url(playlistUri):
         return "https://via.placeholder.com/150/CCCCCC/FFFFFF?text=No+Image"  # Placeholder grey box
 
 
+@st.cache_data
+def get_NoahImage():
+    
+    search_url = "https://api.spotify.com/v1/users/nsimm22/"
+    response = submitRequest(search_url, "Get Playlist Image", {})
+
+    if "images" in response and len(response["images"]) > 0:
+        image_url = response["images"][0]["url"]
+    else:
+        image_url = "https://via.placeholder.com/150/CCCCCC/FFFFFF?text=No+Image"  # Placeholder grey box
+
+    return image_url
+
 # Function to display statistics for artists or songs
 def display_stats(column, title, statType, display_percentage):
     st.markdown(f"<h4 style='color: #1DB954;'>{title}</h4>", unsafe_allow_html=True)
@@ -719,7 +732,9 @@ else:
 
     historical = st.empty()
 
-    image_path = "C:/Users/NSimms/OneDrive - Geosyntec/Desktop/General Coding/Simmplify/frontend/DSC03596.JPG"
+    image_path = get_NoahImage()
+
+    st.write(image_path)
     
     st.markdown(f"""
         <div style="text-align: center; padding: 10px; border: 2px solid #1DB954; border-radius: 10px; background-color: rgba(255, 255, 255, 0.0);">
