@@ -430,12 +430,14 @@ def summarizedAdvancedStats(historicalData):
 
     # Filter out entries where percentage listened is 0 for top categories
     filtered_top_historicalData = historicalData[historicalData['percentageListened'] > 0]
+    filtered_bottom_historicalData = historicalData[historicalData['percentageSkipped'] > 0]
+
 
     bottomArtists = historicalData[historicalData['percentageSkipped'] > 0].groupby('artistName').agg({'percentageSkipped': 'sum'}).reset_index().sort_values(by='percentageSkipped', ascending=False).head(5)
     
     bottomSongs = historicalData[historicalData['percentageSkipped'] > 0].groupby(['songName', 'artistName']).agg({'percentageSkipped': 'sum'}).reset_index().sort_values(by='percentageSkipped', ascending=False).head(5)
 
-    bottomPlaylists = historicalData.groupby('playlistUri').agg({'percentageSkipped': 'sum'}).reset_index().sort_values(by='percentageSkipped', ascending=False).head(5)
+    bottomPlaylists = filtered_bottom_historicalData.groupby('playlistUri').agg({'percentageSkipped': 'sum'}).reset_index().sort_values(by='percentageSkipped', ascending=False).head(5)
     
     topSongs = filtered_top_historicalData.groupby(['songName', 'artistName']).agg({'percentageListened': 'sum'}).reset_index().sort_values(by='percentageListened', ascending=False).head(5)
     
