@@ -157,6 +157,8 @@ def exchange_code_for_token(auth_code):
         st.session_state['access_token'] = token_info['access_token']
         st.session_state["access_token_endTime"] = datetime.now(pytz.utc) + timedelta(seconds=token_info['expires_in'])
         st.session_state["refresh_token"] = token_info['refresh_token']
+        requestsAsJsonUser = submitRequest("https://api.spotify.com/v1/me", "Get Users PlaybackState", {})
+        st.write("requestsAsJsonUser: ", requestsAsJsonUser)
         st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
     else:
         st.toast(f"Error fetching the token: {response.status_code} - {response.text}")
