@@ -749,7 +749,7 @@ else:
         playMin = sde2.slider("Minimum Number of Plays", min_value=1, max_value=max(summarizedData["Play Count"])+1, value=1)
         scoreMin_start = min(summarizedData["Preference Score"])
         scoreMin_end = max(summarizedData["Preference Score"])
-        scoreMin, scoreMax = sde3.slider("Preference Score Maximum", min_value=scoreMin_start, max_value=scoreMin_end, value=[scoreMin_start, scoreMin_end])
+        scoreMin, scoreMax = sde3.slider("Preference Score Maximum", min_value=scoreMin_start-1, max_value=scoreMin_end+1, value=[scoreMin_start-1, scoreMin_end+1])
     else:
         playMin = 1
         scoreMin = 0
