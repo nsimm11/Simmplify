@@ -556,8 +556,6 @@ def get_playlist_image_url(playlistUri):
     search_url = "https://api.spotify.com/v1/playlists/" + str(playlistUri)
     response = submitRequest(search_url, "Get Playlist Image", {})
 
-    st.write(response)
-
     if "images" in response and len(response["images"]) > 0:
         url = response["images"][0]["url"]
         return url
@@ -570,6 +568,8 @@ def get_NoahImage():
     
     search_url = "https://api.spotify.com/v1/users/nsimm22/"
     response = submitRequest(search_url, "Get Playlist Image", {})
+
+    st.write(response)
 
     if "images" in response and len(response["images"]) > 0:
         image_url = response["images"][0]["url"]
