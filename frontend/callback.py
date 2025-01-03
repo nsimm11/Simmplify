@@ -311,6 +311,7 @@ def getHistoricalData(userUri):
         si.songName,
         si.artistName,
         si.albumName,
+        si.songLengthMs,
         ld.percentageListened,
         ld.percentageSkipped,
         CAST(ld.listeningStartTime AS datetime) AS listeningStartTime
@@ -331,9 +332,7 @@ def getHistoricalData(userUri):
 
 def format_historical_data(df, playlist_name):
     #Limit to the last 150 rows since the data will become too large to display
-    df = df.sort_values(by='listeningStartTime', ascending=False)
-    df = df.head(150)
-    
+
     # Add playlist name to the DataFrame
     if playlist_name != "ALL":
         df['Playlist Name'] = playlist_name
@@ -341,6 +340,12 @@ def format_historical_data(df, playlist_name):
         # Fetch playlist names for each URI
         playlist_names = userPlaylists.set_index('uri')['name'].to_dict()
         df['Playlist Name'] = df['playlistUri'].map(playlist_names)
+
+    df = df.sort_values(by='listeningStartTime', ascending=False)
+    df = df.head(150)
+
+    df["Seconds Listened"] = (df["percentageListened"]/100) * df["songLengthMs"]/1000
+    df["Seconds Skipped"] = (df["percentageSkipped"]/100) * df["songLengthMs"]/1000
 
     # Rename columns for better readability
     df = df.rename(columns={
@@ -357,35 +362,21 @@ def format_historical_data(df, playlist_name):
     df = df.sort_values(by='Listening Start Time', ascending=False)
 
     # Reorder columns to move Playlist Name to the first position
-    columns_order = ['Playlist Name', 'Song Name', 'Artist Name', 'Album Name', 'Percentage Listened', 'Percentage Skipped', 'Listening Start Time']
+    columns_order = ['Playlist Name', 'Song Name', 'Artist Name', 'Album Name', 'Seconds Listened', 'Seconds Skipped', 'Percentage Listened', 'Percentage Skipped', 'Listening Start Time']
     df = df[columns_order]
 
-    # Apply gradient formatting
-    styled_df = df.style.background_gradient(
-        cmap='RdYlGn',  # Red to Yellow to Green gradient
-        subset=['Percentage Listened'],
-        vmin=0, vmax=100  # Set the range for the gradient
-    ).background_gradient(
-        cmap='RdYlGn_r',  # Reverse the gradient for Percentage Skipped
-        subset=['Percentage Skipped'],
-        vmin=0, vmax=100
-    )
+    # Apply gradient formatting to Seconds Listened based on Percentage Listened
+    styled_df = df.style.apply(lambda x: [
+        f'background-color: rgb({int(255 * (1 - v / 100))}, {int(255 * (v / 100))}, 0); color: black;' for v in df['Percentage Listened']
+    ], subset=['Seconds Listened', "Seconds Skipped"])
 
     return styled_df
 
-def getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists):
+def getSummarizedData(historicalData):
+
     
-    if selectedPlaylistUri is not None:
-        historicalData = historicalData[historicalData['playlistUri'] == selectedPlaylistUri]
-    
-    playlist_names = userPlaylists.set_index('uri')['name'].to_dict()
-
-    if "playlistUri" in historicalData.columns:
-        historicalData["Playlist Name"] = historicalData['playlistUri'].map(playlist_names)
-
-
     # Group by 'playlistUri', 'songName', 'artistName', 'albumName' and aggregate sums
-    summarizedData = historicalData.groupby(['Playlist Name', 'playlistUri', 'songName', 'artistName', 'albumName']).agg({
+    summarizedData = historicalData.groupby(['playlistUri', 'songName', 'artistName', 'albumName']).agg({
         'percentageListened': 'sum',
         'percentageSkipped': 'sum',
         'listeningStartTime': 'count'  # Count the number of times the song has been listened to in this playlist
@@ -401,9 +392,6 @@ def getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists):
         'listeningStartTime': 'Play Count'  # Rename the count column
     })
 
-    # Drop the 'playlistUri' column before returning
-    summarizedData = summarizedData.drop(columns=['playlistUri'])
-
     # Add a new column for Preference Score
     summarizedData['Preference Score'] = summarizedData['Listened Total'] - summarizedData['Skipped Total']
 
@@ -413,15 +401,34 @@ def getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists):
     # Sort by Preference Rate with negative values first, then 0 to 100, and finally 100
     summarizedData['Preference Rate'] = summarizedData['Preference Rate'].astype(int)  # Ensure it's float for proper sorting
     summarizedData = summarizedData.sort_values(by='Preference Rate', ascending=True)  # Sort in ascending order
-    # Apply conditional formatting based on Preference Score
-    def highlight_row(row):
-        score = row['Preference Score']
-        if score > 0:
-            return ['background-color: green'] * len(row)
-        elif score > -300:
-            return ['background-color: yellow'] * len(row)
-        else:
-            return ['background-color: red'] * len(row)
+
+    return summarizedData
+
+# Apply conditional formatting based on Preference Score
+def highlight_row(row):
+    score = row['Preference Score']
+    if score > 0:
+        return ['background-color: green'] * len(row)
+    elif score > -300:
+        return ['background-color: yellow'] * len(row)
+    else:
+        return ['background-color: red'] * len(row)
+
+def filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax):
+    if selectedPlaylistUri is not None:
+        summarizedData = summarizedData[summarizedData['playlistUri'] == selectedPlaylistUri]
+    
+    playlist_names = userPlaylists.set_index('uri')['name'].to_dict()
+    summarizedData["Playlist Name"] = summarizedData['playlistUri'].map(playlist_names)
+
+    # Drop the 'playlistUri' column before returning
+    summarizedData = summarizedData.drop(columns=['playlistUri'])
+
+    summarizedData = summarizedData[summarizedData['Play Count'] >= playMin]
+    summarizedData = summarizedData[summarizedData['Preference Score'] >= scoreMin]
+    summarizedData = summarizedData[summarizedData['Preference Score'] <= scoreMax]
+
+    summarizedData = summarizedData[["Playlist Name", "Song Name", "Artist Name", "Album Name", "Play Count", "Preference Score", "Preference Rate"]]
 
     styled_summarizedData = summarizedData.style.apply(highlight_row, axis=1)
 
@@ -715,6 +722,7 @@ else:
 
     # Display historical data for all playlists
     historicalData = getHistoricalData(userUri)
+    summarizedData = getSummarizedData(historicalData)
 
     #Get users playlists, allow user to select a playlist
     userPlaylists = spotifyUsersPlaylists(userName)
@@ -725,8 +733,13 @@ else:
 
     # Add "ALL" option to the list of playlist names
     playlist_options = ["ALL"] + list(userPlaylists["name"].unique())
+    st.markdown("##### Filters:")
     sde1, sde2, sde3 = st.columns(3)
     selectedPlaylistName = sde1.selectbox("Filter by Playlist", placeholder="-", options=playlist_options)
+    playMin = sde2.slider("Minimum Number of Plays", min_value=1, max_value=max(summarizedData["Play Count"]), value=1)
+    scoreMin_start = min(summarizedData["Preference Score"])
+    scoreMin_end = max(summarizedData["Preference Score"])
+    scoreMin, scoreMax = sde3.slider("Preference Score Maximum", min_value=scoreMin_start, max_value=scoreMin_end, value=[scoreMin_start, scoreMin_end])
 
     simmplify = st.empty()
 
@@ -756,10 +769,10 @@ else:
 
     st.session_state['SelectedPlaylist'] = selectedPlaylistUri
 
-    summarizedListeningData = getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists)
+    summarizedListeningData = filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
     topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists = summarizedAdvancedStats(historicalData)
 
-    historicalData = format_historical_data(historicalData, selectedPlaylistName)
+    historicalDataStyled = format_historical_data(historicalData, selectedPlaylistName)
 
     st.markdown("""
         <div style="text-align: left">
@@ -813,8 +826,9 @@ else:
                 if st.session_state["previous_song_name"] != userCurrentSongPlayingDict["name"]:
                     st.session_state["previous_song_name"] = userCurrentSongPlayingDict["name"]
                     historicalData = getHistoricalData(userUri)
-                    summarizedListeningData = getSummarizedData(historicalData, selectedPlaylistUri, userPlaylists)
-                    historicalData = format_historical_data(historicalData, selectedPlaylistName)
+                    summarizedData = getSummarizedData(historicalData)
+                    summarizedListeningData = filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
+                    historicalDataStyled = format_historical_data(historicalData, selectedPlaylistName)
 
                 c2.markdown(f'SONG: {userCurrentSongPlayingDict["name"]}')
                 c2.markdown(f'Artists: {",".join(userCurrentSongPlayingDict["artists"])}')
@@ -872,7 +886,7 @@ else:
                 display_stats(bottomPlaylists, "Most Skipped Playlists", "Playlist", display_percentage='skipped')
 
         with historical.container():
-            st.dataframe(historicalData, hide_index=True, use_container_width=True)
+            st.dataframe(historicalDataStyled, column_order=['Playlist Name', 'Song Name', 'Artist Name', 'Album Name', 'Seconds Listened', 'Seconds Skipped'], hide_index=True, use_container_width=True)
         
 
         time.sleep(1)
