@@ -175,6 +175,7 @@ def getUserInfo():
     except requests.exceptions.RequestException as e:
         errorLog(f"API request error in getUserInfo: {e}")
         st.warning("An error occurred while connecting to the Spotify API. Please try again later.")
+        return None, None, None
 
 def storeTokensInDatabase():
     db_id = st.session_state['UserDbId']
@@ -678,12 +679,13 @@ else:
 
     # Call the login function at the start of the script
 
-
-
     login()
 
     #Pull user information from database or spotify
     userName, userUri, userId = getUserInfo()
+    if userName is None and userUri is None and userId is None:
+        st.write("No user information found, please authenticate again.")
+        st.stop()
     useDbId = getUserId()
     storeTokensInDatabase()
 
@@ -847,7 +849,7 @@ else:
                 display_stats(bottomPlaylists, "Most Skipped Playlists", "Playlist", display_percentage='skipped')
 
         with historical.container():
-            st.dataframe(historicalData, hide_index=True, use_container_width=True)
+            st.dataframe(historicalData[["Playlist Name", "Song Name", "Listened Percentage", "Listening Start Time"]], hide_index=True, use_container_width=True)
         
 
         time.sleep(1)
