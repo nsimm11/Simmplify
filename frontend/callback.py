@@ -734,12 +734,10 @@ else:
 
     image_path = get_NoahImage()
 
-    st.write(image_path)
-    
     st.markdown(f"""
         <div style="text-align: center; padding: 10px; border: 2px solid #1DB954; border-radius: 10px; background-color: rgba(255, 255, 255, 0.0);">
             <h4 style="color: #1DB954; font-size: 1.5em; margin-bottom: 5px;">Creator Info:</h4>
-            <img src="{image_path}">
+            <img src="{image_path}" width="80" height="80" style="border-radius: 50%; object-fit: cover;">
             <p style="color: #1DB954; font-size: 1.0em; margin-bottom: 5px;">Noah Simms - Developer and Music Enthusiast</p>
             <a href="https://www.instagram.com/nsimm22/?hl=en" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">Instagram 🌟</a>
             <a href="https://github.com/nsimm11" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">GitHub 💻</a>
