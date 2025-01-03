@@ -10,7 +10,7 @@ from pandas import json_normalize
 import time
 import pyodbc
 import pytz
-from streamlit_extras.switch_page_button import switch_page
+import matplotlib.pyplot as plt
 
 st.set_page_config(
     layout="wide", 
@@ -330,8 +330,17 @@ def getHistoricalData(userUri):
 
     return historicalData
 
+def highlight_historical_data_row(row):
+    listened_percentage = row['Percentage Listened']
+    # Use the RdYlGn colormap to determine the background color
+    color = plt.cm.RdYlGn(listened_percentage / 100)  # Normalize to [0, 1]
+    return [
+        f'background-color: rgba({int(color[0] * 255)}, {int(color[1] * 255)}, {int(color[2] * 255)}, 1); color: {"black" if 45 <= row["Percentage Listened"] <= 55 else "white"}' 
+        for _ in row
+    ]
+
 def format_historical_data(df, playlist_name):
-    #Limit to the last 150 rows since the data will become too large to display
+    # Limit to the last 150 rows since the data will become too large to display
 
     # Add playlist name to the DataFrame
     if playlist_name != "ALL":
@@ -365,10 +374,8 @@ def format_historical_data(df, playlist_name):
     columns_order = ['Playlist Name', 'Song Name', 'Artist Name', 'Album Name', 'Seconds Listened', 'Seconds Skipped', 'Percentage Listened', 'Percentage Skipped', 'Listening Start Time']
     df = df[columns_order]
 
-    # Apply gradient formatting to Seconds Listened based on Percentage Listened
-    styled_df = df.style.apply(lambda x: [
-        f'background-color: rgb({int(255 * (1 - v / 100))}, {int(255 * (v / 100))}, 0); color: black;' for v in df['Percentage Listened']
-    ], subset=['Seconds Listened', "Seconds Skipped"])
+    # Apply gradient formatting to all columns based on the 'Percentage Listened'
+    styled_df = df.style.apply(highlight_historical_data_row, axis=1)
 
     return styled_df
 
@@ -434,24 +441,28 @@ def filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlayli
 
     return styled_summarizedData
 
-def summarizedAdvancedStats(historicalData):
+def create_summarized_data_for_artists(summarizedDataForArtists):
+    # Split the 'Artist Name' column by comma and expand it into separate rows
+    summarizedDataForArtists['Artist Name'] = summarizedDataForArtists['Artist Name'].str.split(", ")
+    summarizedDataForArtists = summarizedDataForArtists.explode('Artist Name').reset_index(drop=True)
 
-    # Filter out entries where percentage listened is 0 for top categories
-    filtered_top_historicalData = historicalData[historicalData['percentageListened'] > 0]
-    filtered_bottom_historicalData = historicalData[historicalData['percentageSkipped'] > 0]
+    return summarizedDataForArtists
 
+def summarizedAdvancedStats(summarizedData):
 
-    bottomArtists = historicalData[historicalData['percentageSkipped'] > 0].groupby('artistName').agg({'percentageSkipped': 'sum'}).reset_index().sort_values(by='percentageSkipped', ascending=False).head(5)
+    summarizedDataForArtists = create_summarized_data_for_artists(summarizedData.copy())
+
+    bottomArtists = summarizedDataForArtists.groupby('Artist Name').agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=True).head(5)
     
-    bottomSongs = historicalData[historicalData['percentageSkipped'] > 0].groupby(['songName', 'artistName']).agg({'percentageSkipped': 'sum'}).reset_index().sort_values(by='percentageSkipped', ascending=False).head(5)
+    bottomSongs = summarizedData.groupby(['Song Name', 'Artist Name']).agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=True).head(5)
 
-    bottomPlaylists = filtered_bottom_historicalData.groupby('playlistUri').agg({'percentageSkipped': 'sum'}).reset_index().sort_values(by='percentageSkipped', ascending=False).head(5)
+    bottomPlaylists = summarizedData.groupby('playlistUri').agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=True).head(5)
     
-    topSongs = filtered_top_historicalData.groupby(['songName', 'artistName']).agg({'percentageListened': 'sum'}).reset_index().sort_values(by='percentageListened', ascending=False).head(5)
+    topSongs = summarizedData.groupby(['Song Name', 'Artist Name']).agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=False).head(5)
     
-    topArtists = filtered_top_historicalData.groupby('artistName').agg({'percentageListened': 'sum'}).reset_index().sort_values(by='percentageListened', ascending=False).head(5)
+    topArtists = summarizedDataForArtists.groupby('Artist Name').agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=False).head(5)
 
-    topPlaylists = historicalData.groupby('playlistUri').agg({'percentageListened': 'sum'}).reset_index().sort_values(by='percentageListened', ascending=False).head(5)
+    topPlaylists = summarizedData.groupby('playlistUri').agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=False).head(5)
 
     return topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists
 
@@ -568,10 +579,9 @@ def get_NoahImage():
 # Function to display statistics for artists or songs
 def display_stats(column, title, statType, display_percentage):
     st.markdown(f"<h4 style='color: #1DB954;'>{title}</h4>", unsafe_allow_html=True)
-
     count = 1
     if len(column) > 0:
-        for item in column.itertuples():
+        for index, item in column.iterrows():
             # Adjust column sizes: rank, name, image, and percentage
             cols = st.columns([0.5, 1.5, 1, 1])
 
@@ -585,19 +595,19 @@ def display_stats(column, title, statType, display_percentage):
             # Display artist or song name
             with cols[1]:
                 if statType == "Artist":
-                    st.markdown(f"**{item.artistName}**")
+                    st.markdown(f"**{item['Artist Name']}**")
                 elif statType == "Song":
-                    st.markdown(f"**{item.songName}** by **{item.artistName}**")
+                    st.markdown(f"**{item['Song Name']}** by **{item['Artist Name']}**")
                 elif statType == "Playlist":
-                    st.markdown(f"**{userPlaylists[userPlaylists['uri'] == item.playlistUri]['name'].values[0] if item.playlistUri in userPlaylists['uri'].values else 'Non-User Playlist'}**")
+                    st.markdown(f"**{userPlaylists[userPlaylists['uri'] == item['playlistUri']]['name'].values[0] if item['playlistUri'] in userPlaylists['uri'].values else 'Non-User Playlist'}**")
 
             # Display artist image or album cover
             with cols[2]:
                 if statType == "Artist":
-                    artist_image_url = get_artist_image_url(item.artistName)
+                    artist_image_url = get_artist_image_url(item["Artist Name"])
                     st.image(artist_image_url, width=80)
                 elif statType == "Song":
-                    album_cover_url = get_album_cover_url(item.songName)
+                    album_cover_url = get_album_cover_url(item["Song Name"])
                     st.image(album_cover_url, width=80)
                 elif statType == "Playlist":
                     playlist_image_url = get_playlist_image_url(item.playlistUri)
@@ -606,7 +616,7 @@ def display_stats(column, title, statType, display_percentage):
             # Display percentage listened or skipped
             with cols[3]:
                 percentage = (
-                    f"{item.percentageListened}%" if display_percentage == 'listened' else f"{item.percentageSkipped}%"
+                    f"{item['Preference Score']}%" if display_percentage == 'listened' else f"{item['Preference Score']}%"
                 )
                 label = "Listened" if display_percentage == 'listened' else "Skipped"
                 st.markdown(
@@ -736,12 +746,23 @@ else:
     st.markdown("##### Filters:")
     sde1, sde2, sde3 = st.columns(3)
     selectedPlaylistName = sde1.selectbox("Filter by Playlist", placeholder="-", options=playlist_options)
-    playMin = sde2.slider("Minimum Number of Plays", min_value=1, max_value=max(summarizedData["Play Count"]), value=1)
-    scoreMin_start = min(summarizedData["Preference Score"])
-    scoreMin_end = max(summarizedData["Preference Score"])
-    scoreMin, scoreMax = sde3.slider("Preference Score Maximum", min_value=scoreMin_start, max_value=scoreMin_end, value=[scoreMin_start, scoreMin_end])
+    if len(summarizedData) > 0:
+        playMin = sde2.slider("Minimum Number of Plays", min_value=1, max_value=max(summarizedData["Play Count"]), value=1)
+        scoreMin_start = min(summarizedData["Preference Score"])
+        scoreMin_end = max(summarizedData["Preference Score"])
+        scoreMin, scoreMax = sde3.slider("Preference Score Maximum", min_value=scoreMin_start, max_value=scoreMin_end, value=[scoreMin_start, scoreMin_end])
+    else:
+        playMin = 1
+        scoreMin = 0
+        scoreMax = 100
 
     simmplify = st.empty()
+
+    cb1, cb2, cb3 = st.columns([2,2,10])
+
+    #cb1.button("Clear Yellow Songs")
+    #cb2.button("Clear Red Songs")
+
 
     st.markdown("""
         <div style="text-align: left">
@@ -770,7 +791,7 @@ else:
     st.session_state['SelectedPlaylist'] = selectedPlaylistUri
 
     summarizedListeningData = filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
-    topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists = summarizedAdvancedStats(historicalData)
+    topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists = summarizedAdvancedStats(summarizedData)
 
     historicalDataStyled = format_historical_data(historicalData, selectedPlaylistName)
 
@@ -886,7 +907,7 @@ else:
                 display_stats(bottomPlaylists, "Most Skipped Playlists", "Playlist", display_percentage='skipped')
 
         with historical.container():
-            st.dataframe(historicalDataStyled, column_order=['Playlist Name', 'Song Name', 'Artist Name', 'Album Name', 'Seconds Listened', 'Seconds Skipped'], hide_index=True, use_container_width=True)
+            st.dataframe(historicalDataStyled, column_order=['Playlist Name', 'Song Name', 'Artist Name', 'Album Name', 'Seconds Listened', 'Seconds Skipped', 'Listening Start Time'], hide_index=True, use_container_width=True)
         
 
         time.sleep(1)
