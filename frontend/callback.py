@@ -161,8 +161,8 @@ def getUserInfo():
         requestsAsJsonUser = submitRequest("https://api.spotify.com/v1/me", "Get Users PlaybackState", {})
         
         if requestsAsJsonUser is None:
-            st.warning("Failed to retrieve user information. Please check your connection and try again.")
-            return
+            st.warning("Failed to retrieve user information. Please re-authenticate from the login page.")
+            return None, None, None
 
         userUri = requestsAsJsonUser["uri"]
 
@@ -171,14 +171,12 @@ def getUserInfo():
         st.session_state["UserId"] = str(requestsAsJsonUser["id"])
 
         return st.session_state["UserName"], st.session_state["UserUri"], st.session_state["UserId"]
-    
+
     except requests.exceptions.RequestException as e:
         errorLog(f"API request error in getUserInfo: {e}")
         st.warning("An error occurred while connecting to the Spotify API. Please try again later.")
+        return None, None, None
     
-    st.warning("An error occurred while connecting to the Spotify API. Please try again from the login page.")
-    st.stop()
-    return None, None, None
 
 def storeTokensInDatabase():
     db_id = st.session_state['UserDbId']
