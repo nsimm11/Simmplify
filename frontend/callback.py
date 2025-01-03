@@ -618,7 +618,7 @@ def display_stats(column, title, statType, display_percentage):
                 percentage = (
                     f"{item['Preference Score']}%" if display_percentage == 'listened' else f"{item['Preference Score']}%"
                 )
-                label = "Listened" if display_percentage == 'listened' else "Skipped"
+                label = "Score" if display_percentage == 'listened' else "Score"
                 st.markdown(
                     f"<div class='center-text'><p><strong>{label}:</strong> {percentage}</p></div>",
                     unsafe_allow_html=True,
