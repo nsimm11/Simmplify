@@ -704,6 +704,7 @@ else:
 
     #Pull user information from database or spotify
     userName, userUri, userId = getUserInfo()
+    st.write(userUri, st.session_state["UserUri"])
     if userName is None and userUri is None and userId is None:
         st.warning("No user information found, please authenticate again.")
         st.stop()
