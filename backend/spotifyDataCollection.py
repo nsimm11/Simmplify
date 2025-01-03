@@ -224,6 +224,8 @@ def getSpotifyHistoricalData(userUri, historicalData, access_token):
             FROM SONGINFO 
             WHERE songUri = ?
             """
+            if "spotify:track:" in song_data['songUri']:
+                song_data['songUri'] = song_data['songUri'].replace("spotify:track:", "")
             cursor.execute(check_song_query, (song_data['songUri'],))
             result = cursor.fetchone()
             

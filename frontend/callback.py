@@ -161,7 +161,6 @@ def exchange_code_for_token(auth_code):
     else:
         st.toast(f"Error fetching the token: {response.status_code} - {response.text}")
 
-@st.cache_data
 def getUserInfo():
     try:
         requestsAsJsonUser = submitRequest("https://api.spotify.com/v1/me", "Get Users PlaybackState", {})
