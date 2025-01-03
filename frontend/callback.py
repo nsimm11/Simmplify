@@ -152,6 +152,7 @@ def exchange_code_for_token(auth_code):
     
     if response.status_code == 200:
         token_info = response.json()
+        st.write("response from login: ", token_info)
         st.toast("Updating Session State")
         st.session_state['access_token'] = token_info['access_token']
         st.session_state["access_token_endTime"] = datetime.now(pytz.utc) + timedelta(seconds=token_info['expires_in'])
