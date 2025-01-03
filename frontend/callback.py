@@ -175,7 +175,10 @@ def getUserInfo():
     except requests.exceptions.RequestException as e:
         errorLog(f"API request error in getUserInfo: {e}")
         st.warning("An error occurred while connecting to the Spotify API. Please try again later.")
-        return None, None, None
+    
+    st.warning("An error occurred while connecting to the Spotify API. Please try again from the login page.")
+    st.stop()
+    return None, None, None
 
 def storeTokensInDatabase():
     db_id = st.session_state['UserDbId']
