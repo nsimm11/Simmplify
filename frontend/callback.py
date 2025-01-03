@@ -708,6 +708,7 @@ else:
     userName, userUri, userId = getUserInfo()
     if st.session_state["UserUri"] != userUri:
         st.cache_data.clear()
+        userName, userUri, userId = getUserInfo()
     st.write(st.session_state)
     st.write("userUri: ", userUri, "st.session_state['UserUri']: ", st.session_state["UserUri"], )
     if userName is None and userUri is None and userId is None:
