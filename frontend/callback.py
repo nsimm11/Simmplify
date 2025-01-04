@@ -577,7 +577,7 @@ def get_NoahImage():
 
 # Function to display statistics for artists or songs
 def display_stats(column, title, statType, display_percentage):
-    st.markdown(f"<h4 style='color: #1DB954;'>{title}</h4>", unsafe_allow_html=True)
+    st.markdown(f"<h4 style='color: #1DB954; text-align: center;'>{title}</h4>", unsafe_allow_html=True)
     count = 1
     if len(column) > 0:
         for index, item in column.iterrows():
@@ -604,13 +604,13 @@ def display_stats(column, title, statType, display_percentage):
             with cols[2]:
                 if statType == "Artist":
                     artist_image_url = get_artist_image_url(item["Artist Name"])
-                    st.image(artist_image_url, width=80)
+                    st.markdown(f"<img src='{artist_image_url}' width='80' height='80' style='border-radius: 50%; object-fit: cover; object-position: 50% 50%;padding: 5px;'>", unsafe_allow_html=True)
                 elif statType == "Song":
                     album_cover_url = get_album_cover_url(item["Song Name"])
-                    st.image(album_cover_url, width=80)
+                    st.markdown(f"<img src='{album_cover_url}' width='80' height='80' style='padding: 5px;'>", unsafe_allow_html=True)
                 elif statType == "Playlist":
                     playlist_image_url = get_playlist_image_url(item.playlistUri)
-                    st.image(playlist_image_url, width=80)
+                    st.markdown(f"<img src='{playlist_image_url}' width='80' height='80' style='padding: 5px;'>", unsafe_allow_html=True)
 
             # Display percentage listened or skipped
             with cols[3]:
@@ -624,6 +624,9 @@ def display_stats(column, title, statType, display_percentage):
                 )
 
             count += 1
+
+def rerunStreamlit():
+    st.rerun()
 
 query_params = st.query_params  # Use st.query_params directly
 code = query_params.get("code")  # Get the code directly
@@ -716,8 +719,8 @@ else:
     """, unsafe_allow_html=True)
 
     # Call the login function at the start of the script
-
     login()
+
     #Pull user information from database or spotify
     userName, userUri, userId = getUserInfo()
     if st.session_state["UserUri"] != userUri and st.session_state["UserUri"] != "":
@@ -742,6 +745,7 @@ else:
 
     # Add "ALL" option to the list of playlist names
     playlist_options = ["ALL"] + list(userPlaylists["name"].unique())
+
     st.markdown("##### Filters:")
     sde1, sde2, sde3 = st.columns(3)
     selectedPlaylistName = sde1.selectbox("Filter by Playlist", placeholder="-", options=playlist_options)
@@ -766,7 +770,7 @@ else:
     st.markdown("""
         <div style="text-align: left">
             <hr style="border: 1px solid #1DB954; width: 100%" />
-            <h3 style="color: #1DB954; font-size: 2em;">Biggest Hits</h3>
+            <h3 style="color: #1DB954; font-size: 2em; text-align: center;">Biggest Hits</h3>
         </div>
     """, unsafe_allow_html=True)
 
@@ -775,12 +779,11 @@ else:
     st.markdown("""
         <div style="text-align: left">
             <hr style="border: 1px solid #1DB954; width: 100%" />
-            <h3 style="color: #1DB954; font-size: 2em;">Biggest Misses</h3>
+            <h3 style="color: #1DB954; font-size: 2em; text-align: center;">Biggest Misses</h3>
         </div>  
     """, unsafe_allow_html=True)
 
     biggestMisses = st.empty()
-
 
     if selectedPlaylistName == "ALL":
         selectedPlaylistUri = None  # No filtering by playlist
@@ -875,7 +878,7 @@ else:
 
         with biggestHits.container():
             # Clear previous columns
-            as1, as2, as3 = st.columns(3)
+            as1, as2, as3 = st.columns(3, gap="large", border=True)
 
             # Display Most Listened to Artists
             with as1:
@@ -891,7 +894,7 @@ else:
 
         with biggestMisses.container():
             # Clear previous columns
-            bm1, bm2, bm3 = st.columns(3)
+            bm1, bm2, bm3 = st.columns(3, gap="large", border=True)
 
             # Display Most Skipped Artists
             with bm1:
@@ -910,6 +913,5 @@ else:
         
 
         time.sleep(1)
-
 
 
