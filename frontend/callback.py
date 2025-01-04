@@ -555,7 +555,7 @@ def get_playlist_image_url(playlistUri):
     search_url = "https://api.spotify.com/v1/playlists/" + str(playlistUri)
     response = submitRequest(search_url, "Get Playlist Image", {})
 
-    if response and"images" in response and len(response["images"]) > 0:
+    if response and "images" in response and response["images"]:
         url = response["images"][0]["url"]
         return url
     else:
@@ -568,7 +568,7 @@ def get_NoahImage():
     search_url = "https://api.spotify.com/v1/users/nsimm22/"
     response = submitRequest(search_url, "Get Playlist Image", {})
 
-    if response and "images" in response and len(response["images"]) > 0:
+    if "images" in response and len(response["images"]) > 0:
         image_url = response["images"][0]["url"]
     else:
         image_url = "https://via.placeholder.com/150/CCCCCC/FFFFFF?text=No+Image"  # Placeholder grey box
@@ -577,7 +577,7 @@ def get_NoahImage():
 
 # Function to display statistics for artists or songs
 def display_stats(column, title, statType, display_percentage):
-    st.markdown(f"<h4 style='color: #1DB954; text-align: center;'>{title}</h4>", unsafe_allow_html=True)
+    st.markdown(f"<h4 style='color: #1DB954;'>{title}</h4>", unsafe_allow_html=True)
     count = 1
     if len(column) > 0:
         for index, item in column.iterrows():
@@ -604,13 +604,13 @@ def display_stats(column, title, statType, display_percentage):
             with cols[2]:
                 if statType == "Artist":
                     artist_image_url = get_artist_image_url(item["Artist Name"])
-                    st.markdown(f"<img src='{artist_image_url}' width='80' height='80' style='border-radius: 50%; object-fit: cover; object-position: 50% 50%;padding: 5px;'>", unsafe_allow_html=True)
+                    st.image(artist_image_url, width=80)
                 elif statType == "Song":
                     album_cover_url = get_album_cover_url(item["Song Name"])
-                    st.markdown(f"<img src='{album_cover_url}' width='80' height='80' style='padding: 5px;'>", unsafe_allow_html=True)
+                    st.image(album_cover_url, width=80)
                 elif statType == "Playlist":
                     playlist_image_url = get_playlist_image_url(item.playlistUri)
-                    st.markdown(f"<img src='{playlist_image_url}' width='80' height='80' style='padding: 5px;'>", unsafe_allow_html=True)
+                    st.image(playlist_image_url, width=80)
 
             # Display percentage listened or skipped
             with cols[3]:
@@ -624,9 +624,6 @@ def display_stats(column, title, statType, display_percentage):
                 )
 
             count += 1
-
-def rerunStreamlit():
-    st.rerun()
 
 query_params = st.query_params  # Use st.query_params directly
 code = query_params.get("code")  # Get the code directly
@@ -724,7 +721,6 @@ else:
     #Pull user information from database or spotify
     userName, userUri, userId = getUserInfo()
     if st.session_state["UserUri"] != userUri and st.session_state["UserUri"] != "":
-        st.cache_data.clear()
         userName, userUri, userId = getUserInfo()
     if userName is None and userUri is None and userId is None:
         st.warning("No user information found, please authenticate again.")
@@ -745,15 +741,14 @@ else:
 
     # Add "ALL" option to the list of playlist names
     playlist_options = ["ALL"] + list(userPlaylists["name"].unique())
-
     st.markdown("##### Filters:")
     sde1, sde2, sde3 = st.columns(3)
     selectedPlaylistName = sde1.selectbox("Filter by Playlist", placeholder="-", options=playlist_options)
     if len(summarizedData) > 0:
-        playMin = sde2.slider("Minimum Number of Plays", min_value=1, max_value=max(summarizedData["Play Count"])+1, value=1)
+        playMin = sde2.slider("Minimum Number of Plays", min_value=1, max_value=max(summarizedData["Play Count"]), value=1)
         scoreMin_start = min(summarizedData["Preference Score"])
         scoreMin_end = max(summarizedData["Preference Score"])
-        scoreMin, scoreMax = sde3.slider("Preference Score Maximum", min_value=scoreMin_start-1, max_value=scoreMin_end+1, value=[scoreMin_start-1, scoreMin_end+1])
+        scoreMin, scoreMax = sde3.slider("Preference Score Maximum", min_value=scoreMin_start, max_value=scoreMin_end, value=[scoreMin_start, scoreMin_end])
     else:
         playMin = 1
         scoreMin = 0
@@ -761,16 +756,16 @@ else:
 
     simmplify = st.empty()
 
-    cb1, cb2, cb3 = st.columns([2,2,10])
+    cb1, cb2, cb3 = st.columns([2,2,2,8])
 
-    #cb1.button("Clear Yellow Songs")
-    #cb2.button("Clear Red Songs")
-
+    cb1.button("Clear Yellow Songs")
+    cb2.button("Clear Red Songs")
+    cb3.button("Clear Filtered Songs")
 
     st.markdown("""
         <div style="text-align: left">
             <hr style="border: 1px solid #1DB954; width: 100%" />
-            <h3 style="color: #1DB954; font-size: 2em; text-align: center;">Biggest Hits</h3>
+            <h3 style="color: #1DB954; font-size: 2em;">Biggest Hits</h3>
         </div>
     """, unsafe_allow_html=True)
 
@@ -779,11 +774,12 @@ else:
     st.markdown("""
         <div style="text-align: left">
             <hr style="border: 1px solid #1DB954; width: 100%" />
-            <h3 style="color: #1DB954; font-size: 2em; text-align: center;">Biggest Misses</h3>
+            <h3 style="color: #1DB954; font-size: 2em;">Biggest Misses</h3>
         </div>  
     """, unsafe_allow_html=True)
 
     biggestMisses = st.empty()
+
 
     if selectedPlaylistName == "ALL":
         selectedPlaylistUri = None  # No filtering by playlist
@@ -878,7 +874,7 @@ else:
 
         with biggestHits.container():
             # Clear previous columns
-            as1, as2, as3 = st.columns(3, gap="large", border=True)
+            as1, as2, as3 = st.columns(3)
 
             # Display Most Listened to Artists
             with as1:
@@ -894,7 +890,7 @@ else:
 
         with biggestMisses.container():
             # Clear previous columns
-            bm1, bm2, bm3 = st.columns(3, gap="large", border=True)
+            bm1, bm2, bm3 = st.columns(3)
 
             # Display Most Skipped Artists
             with bm1:
@@ -913,5 +909,6 @@ else:
         
 
         time.sleep(1)
+
 
 
