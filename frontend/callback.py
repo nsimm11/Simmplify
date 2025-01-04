@@ -438,7 +438,7 @@ def filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlayli
 
     styled_summarizedData = summarizedData.style.apply(highlight_row, axis=1)
 
-    return styled_summarizedData
+    return styled_summarizedData, len(summarizedData)
 
 def create_summarized_data_for_artists(summarizedDataForArtists):
     # Split the 'Artist Name' column by comma and expand it into separate rows
@@ -748,19 +748,39 @@ else:
         playMin = sde2.slider("Minimum Number of Plays", min_value=1, max_value=max(summarizedData["Play Count"]), value=1)
         scoreMin_start = min(summarizedData["Preference Score"])
         scoreMin_end = max(summarizedData["Preference Score"])
-        scoreMin, scoreMax = sde3.slider("Preference Score Maximum", min_value=scoreMin_start, max_value=scoreMin_end, value=[scoreMin_start, scoreMin_end])
+        scoreMin, scoreMax = sde3.slider("Preference Score Maximum", min_value=scoreMin_start, max_value=scoreMin_end, value=[scoreMin_start, 0])
     else:
         playMin = 1
         scoreMin = 0
         scoreMax = 100
 
+    if selectedPlaylistName == "ALL":
+        selectedPlaylistUri = None  # No filtering by playlist
+    else:
+        selectedPlaylistUri = userPlaylists[userPlaylists["name"] == selectedPlaylistName]["uri"].values[0]
+
+    st.session_state['SelectedPlaylist'] = selectedPlaylistUri
+
+    summarizedListeningData, lengthPostFilter = filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
+    topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists = summarizedAdvancedStats(summarizedData)
+
+    historicalDataStyled = format_historical_data(historicalData, selectedPlaylistName)    
+
     simmplify = st.empty()
 
-    cb1, cb2, cb3 = st.columns([2,2,2,8])
+    cb1, cb2, cb3, cb4 = st.columns([2,2,2,8])
 
-    cb1.button("Clear Yellow Songs")
-    cb2.button("Clear Red Songs")
-    cb3.button("Clear Filtered Songs")
+    with cb1.expander("Clear Yellow Songs"):
+        yellow_songs = len(summarizedData[summarizedData["Preference Score"] < 0])
+        st.warning(f"This will clear {yellow_songs} songs marked in yellow.")
+        st.button("Clear Yellow Songs")
+    with cb2.expander("Clear Red Songs"):
+        red_songs = len(summarizedData[summarizedData["Preference Score"] < -300])
+        st.warning(f"This will clear {red_songs} songs marked in red.")
+        st.button("Clear Red Songs")
+    with cb3.expander("Clear Filtered Songs"):
+        st.warning(f"This will clear all {lengthPostFilter} displayed above.")
+        st.button("Clear Filtered Songs")
 
     st.markdown("""
         <div style="text-align: left">
@@ -781,17 +801,6 @@ else:
     biggestMisses = st.empty()
 
 
-    if selectedPlaylistName == "ALL":
-        selectedPlaylistUri = None  # No filtering by playlist
-    else:
-        selectedPlaylistUri = userPlaylists[userPlaylists["name"] == selectedPlaylistName]["uri"].values[0]
-
-    st.session_state['SelectedPlaylist'] = selectedPlaylistUri
-
-    summarizedListeningData = filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
-    topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists = summarizedAdvancedStats(summarizedData)
-
-    historicalDataStyled = format_historical_data(historicalData, selectedPlaylistName)
 
     st.markdown("""
         <div style="text-align: left">
@@ -846,7 +855,7 @@ else:
                     st.session_state["previous_song_name"] = userCurrentSongPlayingDict["name"]
                     historicalData = getHistoricalData(userUri)
                     summarizedData = getSummarizedData(historicalData)
-                    summarizedListeningData = filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
+                    summarizedListeningData, lengthPostFilter = filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
                     historicalDataStyled = format_historical_data(historicalData, selectedPlaylistName)
 
                 c2.markdown(f'SONG: {userCurrentSongPlayingDict["name"]}')
@@ -872,22 +881,25 @@ else:
         with simmplify.container():
             st.dataframe(summarizedListeningData, hide_index=True, use_container_width=True)
 
+        biggestHits.empty()
         with biggestHits.container():
+            
             # Clear previous columns
             as1, as2, as3 = st.columns(3)
 
             # Display Most Listened to Artists
             with as1:
-                display_stats(topArtists, "Most Listened to Artists", "Artist", display_percentage='listened')
+                display_stats(topArtists, "Most Played Artists", "Artist", display_percentage='listened')
 
             # Display Most Listened to Songs
             with as2:
-                display_stats(topSongs, "Most Listened to Songs", "Song", display_percentage='listened')
+                display_stats(topSongs, "Most Played Songs", "Song", display_percentage='listened')
 
             # Display Most Skipped Artists
             with as3:
                 display_stats(topPlaylists, "Most Played Playlists", "Playlist", display_percentage='listened')
 
+        biggestMisses.empty()
         with biggestMisses.container():
             # Clear previous columns
             bm1, bm2, bm3 = st.columns(3)
