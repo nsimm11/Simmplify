@@ -438,7 +438,7 @@ def filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlayli
 
     styled_summarizedData = summarizedData.style.apply(highlight_row, axis=1)
 
-    return styled_summarizedData, len(summarizedData)
+    return styled_summarizedData, len(summarizedData), summarizedData
 
 def create_summarized_data_for_artists(summarizedDataForArtists):
     # Split the 'Artist Name' column by comma and expand it into separate rows
@@ -604,13 +604,14 @@ def display_stats(column, title, statType, display_percentage):
             with cols[2]:
                 if statType == "Artist":
                     artist_image_url = get_artist_image_url(item["Artist Name"])
-                    st.image(artist_image_url, width=80)
+                    st.markdown(f"<img src='{artist_image_url}' width='80' height='80' style='border-radius: 50%; object-fit: cover; object-position: 50% 50%; padding: 5px;'>", unsafe_allow_html=True)
                 elif statType == "Song":
                     album_cover_url = get_album_cover_url(item["Song Name"])
-                    st.image(album_cover_url, width=80)
+                    st.markdown(f"<img src='{album_cover_url}' width='80' height='80' style='object-fit: cover; padding: 5px;'>", unsafe_allow_html=True)
+
                 elif statType == "Playlist":
                     playlist_image_url = get_playlist_image_url(item.playlistUri)
-                    st.image(playlist_image_url, width=80)
+                    st.markdown(f"<img src='{playlist_image_url}' width='80' height='80' style='object-fit: cover; padding: 5px;'>", unsafe_allow_html=True)
 
             # Display percentage listened or skipped
             with cols[3]:
@@ -745,10 +746,10 @@ else:
     sde1, sde2, sde3 = st.columns(3)
     selectedPlaylistName = sde1.selectbox("Filter by Playlist", placeholder="-", options=playlist_options)
     if len(summarizedData) > 0:
-        playMin = sde2.slider("Minimum Number of Plays", min_value=1, max_value=max(summarizedData["Play Count"]), value=1)
+        playMin = sde2.slider("Filter by Minimum Number of Plays", min_value=1, max_value=max(summarizedData["Play Count"]), value=1)
         scoreMin_start = min(summarizedData["Preference Score"])
         scoreMin_end = max(summarizedData["Preference Score"])
-        scoreMin, scoreMax = sde3.slider("Preference Score Maximum", min_value=scoreMin_start, max_value=scoreMin_end, value=[scoreMin_start, 0])
+        scoreMin, scoreMax = sde3.slider("Filter By Maximum Preference Score", min_value=scoreMin_start, max_value=scoreMin_end, value=[scoreMin_start, 0])
     else:
         playMin = 1
         scoreMin = 0
@@ -761,7 +762,7 @@ else:
 
     st.session_state['SelectedPlaylist'] = selectedPlaylistUri
 
-    summarizedListeningData, lengthPostFilter = filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
+    summarizedListeningData, lengthPostFilter, filteredSummarizedData = filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
     topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists = summarizedAdvancedStats(summarizedData)
 
     historicalDataStyled = format_historical_data(historicalData, selectedPlaylistName)    
@@ -771,15 +772,15 @@ else:
     cb1, cb2, cb3, cb4 = st.columns([2,2,2,8])
 
     with cb1.expander("Clear Yellow Songs"):
-        yellow_songs = len(summarizedData[summarizedData["Preference Score"] < 0])
-        st.warning(f"This will clear {yellow_songs} songs marked in yellow.")
+        yellow_songs = len(filteredSummarizedData[filteredSummarizedData["Preference Score"] < 0])
+        st.warning(f"This will remove {yellow_songs} songs from Playlist: {selectedPlaylistName}.")
         st.button("Clear Yellow Songs")
     with cb2.expander("Clear Red Songs"):
-        red_songs = len(summarizedData[summarizedData["Preference Score"] < -300])
-        st.warning(f"This will clear {red_songs} songs marked in red.")
+        red_songs = len(filteredSummarizedData[filteredSummarizedData["Preference Score"] < -300])
+        st.warning(f"This will remove {red_songs} songs from Playlist: {selectedPlaylistName}.")
         st.button("Clear Red Songs")
     with cb3.expander("Clear Filtered Songs"):
-        st.warning(f"This will clear all {lengthPostFilter} displayed above.")
+        st.warning(f"This will remove {lengthPostFilter} songs from Playlist: {selectedPlaylistName}.")
         st.button("Clear Filtered Songs")
 
     st.markdown("""
@@ -805,7 +806,7 @@ else:
     st.markdown("""
         <div style="text-align: left">
             <hr style="border: 1px solid #1DB954; width: 100%" />
-            <h3 style="color: #1DB954; font-size: 2em;">Historical Listening Data:</h3>
+            <h3 style="color: #1DB954; font-size: 2em;">Historical Listening Data (Last 150 Songs):</h3>
         </div>
     """, unsafe_allow_html=True)
 
@@ -855,7 +856,7 @@ else:
                     st.session_state["previous_song_name"] = userCurrentSongPlayingDict["name"]
                     historicalData = getHistoricalData(userUri)
                     summarizedData = getSummarizedData(historicalData)
-                    summarizedListeningData, lengthPostFilter = filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
+                    summarizedListeningData, lengthPostFilter, filteredSummarizedData = filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
                     historicalDataStyled = format_historical_data(historicalData, selectedPlaylistName)
 
                 c2.markdown(f'SONG: {userCurrentSongPlayingDict["name"]}')
@@ -883,9 +884,8 @@ else:
 
         biggestHits.empty()
         with biggestHits.container():
-            
             # Clear previous columns
-            as1, as2, as3 = st.columns(3)
+            as1, as2, as3 = st.columns(3, gap="large", border=True)
 
             # Display Most Listened to Artists
             with as1:
@@ -902,7 +902,7 @@ else:
         biggestMisses.empty()
         with biggestMisses.container():
             # Clear previous columns
-            bm1, bm2, bm3 = st.columns(3)
+            bm1, bm2, bm3 = st.columns(3, gap="large", border=True)
 
             # Display Most Skipped Artists
             with bm1:
