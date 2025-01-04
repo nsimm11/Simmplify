@@ -51,7 +51,7 @@ if 'previous_song_name' not in st.session_state:
     st.session_state['previous_song_name'] = None
 
 # Scopes required for accessing user's currently playing track
-SCOPE = "user-read-playback-state user-read-currently-playing user-read-recently-played"
+SCOPE = "user-read-playback-state user-read-currently-playing user-read-recently-played playlist-modify-private playlist-modify-public"
 
 sp_oauth = SpotifyOAuth(client_id=st.secrets["CLIENT_ID"], 
                         client_secret=st.secrets["CLIENT_SECRET"],
@@ -313,6 +313,7 @@ def getHistoricalData(userUri):
         si.songLengthMs,
         ld.percentageListened,
         ld.percentageSkipped,
+        ld.songUri,
         CAST(ld.listeningStartTime AS datetime) AS listeningStartTime
     FROM LISTENERDATA ld
     JOIN SONGINFO si ON ld.songUri = si.songUri
@@ -382,7 +383,7 @@ def getSummarizedData(historicalData):
 
     
     # Group by 'playlistUri', 'songName', 'artistName', 'albumName' and aggregate sums
-    summarizedData = historicalData.groupby(['playlistUri', 'songName', 'artistName', 'albumName']).agg({
+    summarizedData = historicalData.groupby(['playlistUri', 'songName', 'artistName', 'albumName', 'songUri']).agg({
         'percentageListened': 'sum',
         'percentageSkipped': 'sum',
         'listeningStartTime': 'count'  # Count the number of times the song has been listened to in this playlist
@@ -427,16 +428,16 @@ def filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlayli
     playlist_names = userPlaylists.set_index('uri')['name'].to_dict()
     summarizedData["Playlist Name"] = summarizedData['playlistUri'].map(playlist_names)
 
-    # Drop the 'playlistUri' column before returning
-    summarizedData = summarizedData.drop(columns=['playlistUri'])
-
     summarizedData = summarizedData[summarizedData['Play Count'] >= playMin]
     summarizedData = summarizedData[summarizedData['Preference Score'] >= scoreMin]
     summarizedData = summarizedData[summarizedData['Preference Score'] <= scoreMax]
 
-    summarizedData = summarizedData[["Playlist Name", "Song Name", "Artist Name", "Album Name", "Play Count", "Preference Score", "Preference Rate"]]
+    # Drop the 'playlistUri' column before returning
+    stylesummarizedData = summarizedData.drop(columns=['playlistUri'])
 
-    styled_summarizedData = summarizedData.style.apply(highlight_row, axis=1)
+    stylesummarizedData = stylesummarizedData[["Playlist Name", "Song Name", "Artist Name", "Album Name", "Play Count", "Preference Score", "Preference Rate"]]
+
+    styled_summarizedData = stylesummarizedData.style.apply(highlight_row, axis=1)
 
     return styled_summarizedData, len(summarizedData), summarizedData
 
@@ -626,6 +627,42 @@ def display_stats(column, title, statType, display_percentage):
 
             count += 1
 
+def clearFromSpotifyPlaylist(playlistUri, songUris):
+    # Extract the playlist ID from the URI
+    playlist_id = playlistUri.split(":")[-1]  # Get the last part after 'playlist:'
+    urlForRemoval = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
+
+    tracksToRemove = []
+    for songUri in songUris["songUri"]:
+        tracksToRemove.append({"uri": "spotify:track:" + songUri})
+
+    print(f"Deleting from: {urlForRemoval}")
+    print(f"Tracks to remove: {tracksToRemove}")  # Debugging output
+
+    # Modify the request to be a DELETE request
+    response = requests.delete(urlForRemoval, headers={"Authorization": f"Bearer {st.session_state['access_token']}"}, json={"tracks": tracksToRemove})
+
+    print("Response: ", response.json())  # Print the response JSON for better debugging
+
+    return True
+
+def clearFromDatabase(playlistUri, toBeClearedDf):
+    for index, row in toBeClearedDf.iterrows():
+        deleteQuery = f"DELETE FROM LISTENERDATA WHERE userUri = '{st.session_state['UserUri']}' AND songUri = '{row['songUri']}' AND playlistUri = '{playlistUri}'"
+        
+        cursor.execute(deleteQuery)
+        conn.commit()
+
+def clearFromSpotify(toBeClearedDf):
+
+    playlistUris = list(toBeClearedDf["playlistUri"].unique())
+
+    for playlistUri in playlistUris:
+        clearFromSpotifyPlaylist(playlistUri, toBeClearedDf[toBeClearedDf["playlistUri"] == playlistUri])
+        clearFromDatabase(playlistUri, toBeClearedDf[toBeClearedDf["playlistUri"] == playlistUri])
+
+
+
 query_params = st.query_params  # Use st.query_params directly
 code = query_params.get("code")  # Get the code directly
 
@@ -774,14 +811,20 @@ else:
     with cb1.expander("Clear Yellow Songs"):
         yellow_songs = len(filteredSummarizedData[filteredSummarizedData["Preference Score"] < 0])
         st.warning(f"This will remove {yellow_songs} songs from Playlist: {selectedPlaylistName}.")
-        st.button("Clear Yellow Songs")
+        clearYellowSongsButton = st.button("Clear Yellow Songs")
+        if clearYellowSongsButton:
+            clearFromSpotify(filteredSummarizedData[filteredSummarizedData["Preference Score"] < 0])
     with cb2.expander("Clear Red Songs"):
         red_songs = len(filteredSummarizedData[filteredSummarizedData["Preference Score"] < -300])
         st.warning(f"This will remove {red_songs} songs from Playlist: {selectedPlaylistName}.")
-        st.button("Clear Red Songs")
+        clearRedSongsButton = st.button("Clear Red Songs")
+        if clearRedSongsButton:
+            clearFromSpotify(filteredSummarizedData[filteredSummarizedData["Preference Score"] < -300])
     with cb3.expander("Clear Filtered Songs"):
         st.warning(f"This will remove {lengthPostFilter} songs from Playlist: {selectedPlaylistName}.")
-        st.button("Clear Filtered Songs")
+        filteredSongsButton = st.button("Clear Filtered Songs")
+        if filteredSongsButton:
+            clearFromSpotify(filteredSummarizedData)
 
     st.markdown("""
         <div style="text-align: left">
@@ -800,8 +843,6 @@ else:
     """, unsafe_allow_html=True)
 
     biggestMisses = st.empty()
-
-
 
     st.markdown("""
         <div style="text-align: left">
