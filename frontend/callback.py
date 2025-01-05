@@ -806,6 +806,7 @@ else:
 
     simmplify = st.empty()
 
+
     cb1, cb2, cb3, cb4 = st.columns([2,2,2,8])
 
     with cb1.expander("Clear Yellow Songs"):
