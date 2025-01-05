@@ -869,6 +869,39 @@ else:
 
     startTime = datetime.now(pytz.utc)
 
+    with biggestHits.container():
+        # Clear previous columns
+        as1, as2, as3 = st.columns(3, gap="large", border=True)
+
+        # Display Most Listened to Artists
+        with as1:
+            display_stats(topArtists, "Most Played Artists", "Artist", display_percentage='listened')
+
+        # Display Most Listened to Songs
+        with as2:
+            display_stats(topSongs, "Most Played Songs", "Song", display_percentage='listened')
+
+        # Display Most Skipped Artists
+        with as3:
+            display_stats(topPlaylists, "Most Played Playlists", "Playlist", display_percentage='listened')
+
+    with biggestMisses.container():
+        # Clear previous columns
+        bm1, bm2, bm3 = st.columns(3, gap="large", border=True)
+
+        # Display Most Skipped Artists
+        with bm1:
+            display_stats(bottomArtists, "Most Skipped Artists", "Artist", display_percentage='skipped')
+
+        # Display Most Skipped Songs
+        with bm2:
+            display_stats(bottomSongs, "Most Skipped Songs", "Song", display_percentage='skipped')
+
+        # Display Most Skipped Playlists
+        with bm3:   
+            display_stats(bottomPlaylists, "Most Skipped Playlists", "Playlist", display_percentage='skipped')
+
+
     while True:
     
         if (datetime.now(pytz.utc) - startTime).total_seconds() % 10 < 1:
@@ -924,39 +957,6 @@ else:
         with simmplify.container():
             st.dataframe(summarizedListeningData, hide_index=True, use_container_width=True)
 
-        biggestHits.empty()
-        with biggestHits.container():
-            # Clear previous columns
-            as1, as2, as3 = st.columns(3, gap="large", border=True)
-
-            # Display Most Listened to Artists
-            with as1:
-                display_stats(topArtists, "Most Played Artists", "Artist", display_percentage='listened')
-
-            # Display Most Listened to Songs
-            with as2:
-                display_stats(topSongs, "Most Played Songs", "Song", display_percentage='listened')
-
-            # Display Most Skipped Artists
-            with as3:
-                display_stats(topPlaylists, "Most Played Playlists", "Playlist", display_percentage='listened')
-
-        biggestMisses.empty()
-        with biggestMisses.container():
-            # Clear previous columns
-            bm1, bm2, bm3 = st.columns(3, gap="large", border=True)
-
-            # Display Most Skipped Artists
-            with bm1:
-                display_stats(bottomArtists, "Most Skipped Artists", "Artist", display_percentage='skipped')
-
-            # Display Most Skipped Songs
-            with bm2:
-                display_stats(bottomSongs, "Most Skipped Songs", "Song", display_percentage='skipped')
-
-            # Display Most Skipped Playlists
-            with bm3:   
-                display_stats(bottomPlaylists, "Most Skipped Playlists", "Playlist", display_percentage='skipped')
 
         with historical.container():
             st.dataframe(historicalDataStyled, column_order=['Playlist Name', 'Song Name', 'Artist Name', 'Album Name', 'Seconds Listened', 'Seconds Skipped', 'Listening Start Time'], hide_index=True, use_container_width=True)
