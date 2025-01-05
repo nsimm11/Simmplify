@@ -68,6 +68,20 @@ conn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
 
 cursor = conn.cursor()
 
+def hide_streamlit_style():
+    hide_style = """
+    <style>
+        header {display: none !important;}
+        footer {display: none !important;}
+        section.main > div {padding: 0rem 5rem 0 rem;}
+        #MainMenu {display: none !important;}
+        section {top: 0px !important;}
+    </style>
+    """
+    st.markdown(hide_style, unsafe_allow_html=True)
+
+hide_streamlit_style()
+
 def errorLog(errorMessage):
     f = open("error.txt", "a")
     f.write(f"{datetime.now()} - {errorMessage} \n")
@@ -578,7 +592,7 @@ def get_NoahImage():
 
 # Function to display statistics for artists or songs
 def display_stats(column, title, statType, display_percentage):
-    st.markdown(f"<h4 style='color: #1DB954;'>{title}</h4>", unsafe_allow_html=True)
+    st.markdown(f"<h4 style='color: #1DB954; text-align: center;'>{title}</h4>", unsafe_allow_html=True)
     count = 1
     if len(column) > 0:
         for index, item in column.iterrows():
@@ -828,7 +842,7 @@ else:
             clearFromSpotify(filteredSummarizedData)
 
     st.markdown("""
-        <div style="text-align: left">
+        <div style="text-align: center">
             <hr style="border: 1px solid #1DB954; width: 100%" />
             <h3 style="color: #1DB954; font-size: 2em;">Biggest Hits</h3>
         </div>
@@ -837,7 +851,7 @@ else:
     biggestHits = st.empty()
 
     st.markdown("""
-        <div style="text-align: left">
+        <div style="text-align: center">
             <hr style="border: 1px solid #1DB954; width: 100%" />
             <h3 style="color: #1DB954; font-size: 2em;">Biggest Misses</h3>
         </div>  
