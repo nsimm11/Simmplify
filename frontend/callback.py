@@ -871,7 +871,7 @@ else:
 
     with biggestHits.container():
         # Clear previous columns
-        as1, as2, as3 = st.columns(3, gap="large", border=True)
+        as1, as2, as3 = st.columns(3, gap="medium", border=True)
 
         # Display Most Listened to Artists
         with as1:
@@ -887,7 +887,7 @@ else:
 
     with biggestMisses.container():
         # Clear previous columns
-        bm1, bm2, bm3 = st.columns(3, gap="large", border=True)
+        bm1, bm2, bm3 = st.columns(3, gap="medium", border=True)
 
         # Display Most Skipped Artists
         with bm1:
