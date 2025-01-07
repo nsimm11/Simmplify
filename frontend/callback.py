@@ -583,7 +583,7 @@ def get_NoahImage():
     search_url = "https://api.spotify.com/v1/users/nsimm22/"
     response = submitRequest(search_url, "Get Playlist Image", {})
 
-    if "images" in response and len(response["images"]) > 0:
+    if response and "images" in response and len(response["images"]) > 0:
         image_url = response["images"][0]["url"]
     else:
         image_url = "https://via.placeholder.com/150/CCCCCC/FFFFFF?text=No+Image"  # Placeholder grey box
