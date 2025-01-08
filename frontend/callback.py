@@ -62,7 +62,7 @@ sp_oauth = SpotifyOAuth(client_id=st.secrets["spotify"]["CLIENT_ID"],
 
 #connection string 
 conn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
-                     f'Server={st.secrets["database"]["dbConnectionLocation"]};'
+                     f'Server={};'
                      f'Database={st.secrets["database"]["dbID"]};'
                      'TrustServerCertificate=yes;'
                      f'UID={st.secrets["database"]["dbUsername"]};'
@@ -73,8 +73,6 @@ cursor = conn.cursor()
 def connect_to_db_postgres():
     # Load private key from secrets
     private_key = st.secrets["ssh"]["private_key"]
-
-    st.write(private_key)
 
     # Write the private key to a temporary file
     with open("ssh_key", "w") as key_file:
