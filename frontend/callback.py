@@ -55,24 +55,26 @@ if 'previous_song_name' not in st.session_state:
 # Scopes required for accessing user's currently playing track
 SCOPE = "user-read-playback-state user-read-currently-playing user-read-recently-played playlist-modify-private playlist-modify-public"
 
-sp_oauth = SpotifyOAuth(client_id=st.secrets["CLIENT_ID"], 
-                        client_secret=st.secrets["CLIENT_SECRET"],
-                        redirect_uri=st.secrets["REDIRECT_URI"],
+sp_oauth = SpotifyOAuth(client_id=st.secrets["spotify"]["CLIENT_ID"], 
+                        client_secret=st.secrets["spotify"]["CLIENT_SECRET"],
+                        redirect_uri=st.secrets["spotify"]["REDIRECT_URI"],
                         scope=SCOPE)
 
 #connection string 
 conn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
-                     f'Server={st.secrets["dbConnectionLocation"]};'
-                     f'Database={st.secrets["dbID"]};'
+                     f'Server={st.secrets["database"]["dbConnectionLocation"]};'
+                     f'Database={st.secrets["database"]["dbID"]};'
                      'TrustServerCertificate=yes;'
-                     f'UID={st.secrets["dbUsername"]};'
-                     f'PWD={st.secrets["dbPassword"]}')
+                     f'UID={st.secrets["database"]["dbUsername"]};'
+                     f'PWD={st.secrets["database"]["dbPassword"]}')
 
 cursor = conn.cursor()
 
 def connect_to_db_postgres():
     # Load private key from secrets
-    private_key = st.secrets["private_key"]
+    private_key = st.secrets["ssh"]["private_key"]
+
+    st.write(private_key)
 
     # Write the private key to a temporary file
     with open("ssh_key", "w") as key_file:
