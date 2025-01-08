@@ -12,7 +12,8 @@ import pyodbc
 import pytz
 import matplotlib.pyplot as plt
 import psycopg2
-from sshtunnel import SSHTunnelForwarder
+import sshtunnel
+import tempfile
 
 st.set_page_config(
     layout="wide", 
@@ -71,42 +72,47 @@ conn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
 cursor = conn.cursor()
 
 def connect_to_db_postgres():
-    # Load private key from secrets
-    private_key = st.secrets["ssh"]["private_key"]
+    # Load SSH and PostgreSQL secrets
+    ssh_username = st.secrets["ssh"]["username"]
+    ssh_private_key = st.secrets["ssh"]["private_key"]
+    ssh_private_key_passphrase = st.secrets["ssh"].get("private_key_passphrase", None)
+
+    postgres_hostname = st.secrets["postgres"]["hostname"]
+    postgres_host_port = st.secrets["postgres"]["port"]
+    postgres_username = st.secrets["postgres"]["username"]
+    postgres_password = st.secrets["postgres"]["password"]
+    postgres_database = st.secrets["postgres"]["database"]
 
     # Write the private key to a temporary file
-    with open("ssh_key", "w") as key_file:
-        key_file.write(private_key)
-    os.chmod("ssh_key", 0o600)
+    with tempfile.NamedTemporaryFile("w", delete=False) as temp_key_file:
+        temp_key_file.write(ssh_private_key)
+        temp_key_path = temp_key_file.name
 
-    # Set up SSH tunnel
-    post_server = SSHTunnelForwarder(
-        ssh_address_or_host="ssh.pythonanywhere.com",
-        ssh_username="nsimm22",
-        ssh_private_key=private_key,
-        remote_bind_address=("nsimm22-4282.postgres.pythonanywhere-services.com", 14282),
-        local_bind_address=("localhost", 5432),
-    )
-    post_server.start()
+    # Establish SSH tunnel and connect to PostgreSQL
+    with sshtunnel.SSHTunnelForwarder(
+            ssh_address_or_host=('ssh.pythonanywhere.com', 22),
+            ssh_username=ssh_username,
+            ssh_pkey=temp_key_path,
+            ssh_private_key_password=ssh_private_key_passphrase,
+            remote_bind_address=(postgres_hostname, postgres_host_port)
+    ) as tunnel:
+        connection = psycopg2.connect(
+            user=postgres_username,
+            password=postgres_password,
+            host='127.0.0.1',
+            port=tunnel.local_bind_port,
+            database=postgres_database,
+        )
+        print("Connected to the database successfully!")
+        
+        # Test query
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT NOW();")
+            print("Database time:", cursor.fetchone())
+        
+    connection.close()
 
-    # Connect to the PostgreSQL database via the SSH tunnel
-    post_conn = psycopg2.connect(
-        dbname="simmplify",
-        user="simmplify",
-        password="2*PlayaOnPelada",
-        host="localhost",
-        port=post_server.local_bind_port,
-        sslmode="disable",
-    )
-
-    return post_conn, post_server
-
-post_conn, post_server = connect_to_db_postgres()
-with post_conn.cursor() as cur_post:
-    cur_post.execute("SELECT version();")
-    st.write("PostgreSQL version:", cur_post.fetchone())
-post_conn.close()
-post_server.stop()
+connect_to_db_postgres()
 
 def hide_streamlit_style():
     hide_style = """
