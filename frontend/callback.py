@@ -122,9 +122,16 @@ def errorLog(errorMessage):
 def getQuery(query, params=None):
     if params is None:
         params = []
-    cursor.execute(query, params)
-    Data = pd.DataFrame.from_records(cursor.fetchall(), columns=[col[0] for col in cursor.description])
-    return Data
+    try:
+        cursor.execute(query, params)
+        Data = pd.DataFrame.from_records(
+            cursor.fetchall(), 
+            columns=[col.name for col in cursor.description]
+        )
+        return Data
+    except psycopg2.Error as e:
+        print(f"Error executing query: {e}")
+        return pd.DataFrame()  # Return an empty DataFrame on error
     
 def getUserId(userUri):
 
