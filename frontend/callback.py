@@ -71,6 +71,8 @@ conn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
 
 cursor = conn.cursor()
 
+st.write(st.secrets)
+
 def connect_to_db_postgres():
     # Load SSH and PostgreSQL secrets
     ssh_username = st.secrets["ssh"]["username_ssh"]
