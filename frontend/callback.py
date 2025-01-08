@@ -71,19 +71,17 @@ conn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
 
 cursor = conn.cursor()
 
-st.write(st.secrets["database"]["dbConnectionLocation"])
-
 def connect_to_db_postgres():
     # Load SSH and PostgreSQL secrets
-    ssh_username = st.secrets["ssh"]["username"]
-    ssh_private_key = st.secrets["ssh"]["private_key"]
+    ssh_username = st.secrets["ssh"]["username_ssh"]
+    ssh_private_key = st.secrets["ssh"]["private_key_ssh"]
     ssh_private_key_passphrase = st.secrets["ssh"].get("private_key_passphrase", None)
 
     postgres_hostname = st.secrets["postgres"]["hostname"]
     postgres_host_port = st.secrets["postgres"]["port"]
-    postgres_username = st.secrets["postgres"]["username"]
-    postgres_password = st.secrets["postgres"]["password"]
-    postgres_database = st.secrets["postgres"]["database"]
+    postgres_username = st.secrets["postgres"]["username_post"]
+    postgres_password = st.secrets["postgres"]["password_post"]
+    postgres_database = st.secrets["postgres"]["database_post"]
 
     # Write the private key to a temporary file
     with tempfile.NamedTemporaryFile("w", delete=False) as temp_key_file:
