@@ -155,7 +155,7 @@ def getUserId(userUri):
         return userId["userId"]
     else:
         newUserQuery = "SELECT MAX(userId) FROM USERS"
-        newUserId = getQuery(newUserQuery).values[0][0]
+        newUserId = getQuery(newUserQuery).values[0]
         if newUserId is None:
             newUserId = 1
         else: 
