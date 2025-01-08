@@ -108,7 +108,7 @@ def connect_to_db_postgres():
         # Test query
         with connection.cursor() as cursor:
             cursor.execute("SELECT NOW();")
-            print("Database time:", cursor.fetchone())
+            st.write("Database time:", cursor.fetchone())
         
     connection.close()
 
