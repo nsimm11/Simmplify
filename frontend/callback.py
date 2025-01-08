@@ -74,6 +74,8 @@ def connect_to_db_postgres():
     # Load private key from secrets
     private_key = st.secrets["private_key"]
 
+    st.write(private_key[:10])
+
     # Write the private key to a temporary file
     with open("ssh_key", "w") as key_file:
         key_file.write(private_key)
@@ -101,9 +103,9 @@ def connect_to_db_postgres():
     return post_conn, post_server
 
 post_conn, post_server = connect_to_db_postgres()
-with conn.cursor() as cur:
-    cur.execute("SELECT version();")
-    st.write("PostgreSQL version:", cur.fetchone())
+with post_conn.cursor() as cur_post:
+    cur_post.execute("SELECT version();")
+    st.write("PostgreSQL version:", cur_post.fetchone())
 post_conn.close()
 post_server.stop()
 
