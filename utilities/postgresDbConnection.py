@@ -4,7 +4,7 @@ import os
 
 def connect_to_db():
     # Load private key from secrets
-    private_key = st.secrets["ssh"]["private_key"]
+    private_key = "ashdfkjas"
 
     # Write the private key to a temporary file
     with open("ssh_key_streamlit", "w") as key_file:

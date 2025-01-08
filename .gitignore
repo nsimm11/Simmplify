@@ -6,6 +6,8 @@ error.txt
 databaseSetup.py
 
 frontend/.streamlit/secrets.toml
-
+*ssh*
 *.toml
 *.csv
+
+utilities\postgresDbConnection.py
