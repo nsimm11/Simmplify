@@ -93,7 +93,7 @@ def connect_to_db_postgres():
             port=tunnel.local_bind_port,
             database=postgres_database,
         )
-        print("Connected to the database successfully!")
+        st.write("Connected to the database successfully!")
         
         # Test query
         cursor = connection.cursor()
