@@ -61,16 +61,6 @@ sp_oauth = SpotifyOAuth(client_id=st.secrets["spotify"]["CLIENT_ID"],
                         redirect_uri=st.secrets["spotify"]["REDIRECT_URI"],
                         scope=SCOPE)
 
-#connection string 
-conn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
-                     f'Server={st.secrets["database"]["dbConnectionLocation"]};'
-                     f'Database={st.secrets["database"]["dbID"]};'
-                     'TrustServerCertificate=yes;'
-                     f'UID={st.secrets["database"]["dbUsername"]};'
-                     f'PWD={st.secrets["database"]["dbPassword"]}')
-
-cursor = conn.cursor()
-
 def connect_to_db_postgres():
     # Load SSH and PostgreSQL secrets
     ssh_username = st.secrets["ssh"]["username_ssh"]
@@ -106,13 +96,12 @@ def connect_to_db_postgres():
         print("Connected to the database successfully!")
         
         # Test query
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT NOW();")
-            st.write("Database time:", cursor.fetchone())
-        
-    connection.close()
+        cursor = connection.cursor()
 
-connect_to_db_postgres()
+        
+    return connection, cursor
+
+conn, cursor = connect_to_db_postgres()
 
 def hide_streamlit_style():
     hide_style = """
