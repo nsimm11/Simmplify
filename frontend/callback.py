@@ -62,7 +62,7 @@ sp_oauth = SpotifyOAuth(client_id=st.secrets["spotify"]["CLIENT_ID"],
 
 #connection string 
 conn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
-                     f'Server={};'
+                     f'Server={st.secrets["database"]["dbConnectionLocation"]};'
                      f'Database={st.secrets["database"]["dbID"]};'
                      'TrustServerCertificate=yes;'
                      f'UID={st.secrets["database"]["dbUsername"]};'
