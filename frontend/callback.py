@@ -154,8 +154,11 @@ def getUserId(userUri):
         userId = userId.iloc[0].to_dict()
         if (st.session_state["UserName"]) != userId["username"]: 
             errorLog("Username in DB and username from Spotify do not match")
-        st.toast(f"Thanks for returning {userId['username']}!")
-        st.session_state["UserDbId"] = userId["userid"]
+            return ""
+            
+        else:
+            st.toast(f"Thanks for returning {userId['username']}!")
+            st.session_state["UserDbId"] = userId["userid"]
         return userId["userid"]
     else:
         newUserQuery = "SELECT MAX(userId) FROM USERS"
@@ -223,7 +226,6 @@ def exchange_code_for_token(auth_code):
     else:
         st.toast(f"Error fetching the token: {response.status_code} - {response.text}")
 
-@st.cache_data
 def getUserInfo():
     try:
         requestsAsJsonUser = submitRequest("https://api.spotify.com/v1/me", "Get Users PlaybackState", {})
