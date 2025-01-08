@@ -93,11 +93,7 @@ def connect_to_db_postgres():
             port=tunnel.local_bind_port,
             database=postgres_database,
         )
-        st.write("Connected to the database successfully!")
-        
-        # Test query
         cursor = connection.cursor()
-
         
     return connection, cursor
 
@@ -351,7 +347,7 @@ def spotifyUsersPlaylists(username):
     return userPlaylists
 
 def getHistoricalData(userUri):
-    # Join with SONGINFO table to get song details
+    # Join with SONGDATA table to get song details
     historicalDataQuery = """
     SELECT 
         ld.userUri, 
@@ -365,7 +361,7 @@ def getHistoricalData(userUri):
         ld.songUri,
         CAST(ld.listeningStartTime AS datetime) AS listeningStartTime
     FROM LISTENERDATA ld
-    JOIN SONGINFO si ON ld.songUri = si.songUri
+    JOIN SONGDDATA si ON ld.songUri = si.songUri
     WHERE ld.userUri = ?
     ORDER BY ld.listeningStartTime DESC
     """
@@ -538,8 +534,8 @@ def get_album_cover_url(song_name):
 
 def search_artist_image_bySongUri(artistName):
 
-    #First look for songUris in SONGINFO by artistName, if there are multiple artist names, take the first one by delimiting by ","
-    songUri = getQuery("SELECT songUri FROM SONGINFO WHERE artistName = ?", artistName.split(",")[0])
+    #First look for songUris in SONGDATA by artistName, if there are multiple artist names, take the first one by delimiting by ","
+    songUri = getQuery("SELECT songUri FROM SONGDATA WHERE artistName = ?", artistName.split(",")[0])
 
     #Check if query comes back empty
     if len(songUri) == 0:
