@@ -4,4 +4,5 @@ pyodbc
 streamlit-extras
 pandas
 numpy
-
+sshtunnel
+psycopg2-binary

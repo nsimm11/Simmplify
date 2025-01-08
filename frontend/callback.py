@@ -11,6 +11,8 @@ import time
 import pyodbc
 import pytz
 import matplotlib.pyplot as plt
+import psycopg2
+from sshtunnel import SSHTunnelForwarder
 
 st.set_page_config(
     layout="wide", 
@@ -67,6 +69,43 @@ conn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
                      f'PWD={st.secrets["dbPassword"]}')
 
 cursor = conn.cursor()
+
+def connect_to_db_postgres():
+    # Load private key from secrets
+    private_key = st.secrets["private_key"]
+
+    # Write the private key to a temporary file
+    with open("ssh_key", "w") as key_file:
+        key_file.write(private_key)
+    os.chmod("ssh_key", 0o600)
+
+    # Set up SSH tunnel
+    post_server = SSHTunnelForwarder(
+        ssh_address_or_host="ssh.pythonanywhere.com",
+        ssh_username="nsimm22",
+        ssh_private_key="ssh_key_streamlit",
+        remote_bind_address=("nsimm22-4282.postgres.pythonanywhere-services.com", 14282),
+        local_bind_address=("localhost", 5432),
+    )
+    post_server.start()
+
+    # Connect to the PostgreSQL database via the SSH tunnel
+    post_conn = psycopg2.connect(
+        dbname="simmplify",
+        user="simmplify",
+        password="2*PlayaOnPelada",
+        host="localhost",
+        port=post_server.local_bind_port,
+        sslmode="disable",
+    )
+    return post_conn, post_server
+
+post_conn, post_server = connect_to_db_postgres()
+with conn.cursor() as cur:
+    cur.execute("SELECT version();")
+    st.write("PostgreSQL version:", cur.fetchone())
+post_conn.close()
+post_server.stop()
 
 def hide_streamlit_style():
     hide_style = """
