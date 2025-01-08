@@ -79,25 +79,29 @@ def connect_to_db_postgres():
         temp_key_path = temp_key_file.name
 
     # Establish SSH tunnel and connect to PostgreSQL
-    with sshtunnel.SSHTunnelForwarder(
+    post_server = sshtunnel.SSHTunnelForwarder(
             ssh_address_or_host=('ssh.pythonanywhere.com', 22),
             ssh_username=ssh_username,
             ssh_pkey=temp_key_path,
             ssh_private_key_password=ssh_private_key_passphrase,
             remote_bind_address=(postgres_hostname, postgres_host_port)
-    ) as tunnel:
-        connection = psycopg2.connect(
-            user=postgres_username,
-            password=postgres_password,
-            host='127.0.0.1',
-            port=tunnel.local_bind_port,
-            database=postgres_database,
-        )
-        cursor = connection.cursor()
-        
-    return connection, cursor
+    )
+    post_server.start()
 
-conn, cursor = connect_to_db_postgres()
+    connection = psycopg2.connect(
+        user=postgres_username,
+        password=postgres_password,
+        host='127.0.0.1',
+        port=post_server.local_bind_port,
+        database=postgres_database,
+        options="-c tcp_keepalives_idle=60 -c tcp_keepalives_interval=30 -c tcp_keepalives_count=10",
+        sslmode="disable"
+    )
+        
+    return connection
+
+conn = connect_to_db_postgres()
+cursor = conn.cursor()
 
 def hide_streamlit_style():
     hide_style = """
@@ -130,17 +134,17 @@ def getQuery(query, params=None):
         )
         return Data
     except psycopg2.Error as e:
-        print(f"Error executing query: {e}")
+        st.write(f"Error executing query: {e}")
         return pd.DataFrame()  # Return an empty DataFrame on error
-    
+
 def getUserId(userUri):
 
     if userUri != "" and st.session_state["UserUri"] == "":
         st.session_state["UserUri"] = userUri
-        userTokens = getQuery("SELECT * FROM USERTOKENS WHERE userUri = ?", [userUri])
+        userTokens = getQuery("SELECT * FROM USERTOKENS WHERE useruri = %s", [userUri])
 
     # Ensure the correct table name and schema
-    userIdQuery = "SELECT * FROM dbo.USERS WHERE userUri = ?"
+    userIdQuery = "SELECT * FROM USERS WHERE useruri = %s"
     userUri = st.session_state['UserUri'].strip()
 
     # Use parameterized query to prevent SQL injection
@@ -148,28 +152,34 @@ def getUserId(userUri):
     
     if len(userId) > 0:
         userId = userId.iloc[0].to_dict()
-        if (st.session_state["UserName"]) != userId["userName"]: 
+        if (st.session_state["UserName"]) != userId["username"]: 
             errorLog("Username in DB and username from Spotify do not match")
-        st.toast(f"Thanks for returning {userId['userName']}!")
-        st.session_state["UserDbId"] = userId["userId"]
-        return userId["userId"]
+        st.toast(f"Thanks for returning {userId['username']}!")
+        st.session_state["UserDbId"] = userId["userid"]
+        return userId["userid"]
     else:
         newUserQuery = "SELECT MAX(userId) FROM USERS"
-        newUserId = getQuery(newUserQuery).values[0]
-        if newUserId is None:
+        newUserId = getQuery(newUserQuery) #returns dataframe with max in columns, length is still 1, but check if input is none
+        if newUserId["max"].values[0] is None:
             newUserId = 1
-        else: 
-            newUserId = int(newUserId) + 1
+        else:
+            newUserId = int(newUserId["max"].values[0]) + 1 
 
         # Convert current time to Unix timestamp
         utc_now = datetime.now(pytz.utc)
         unix_timestamp = int(utc_now.timestamp())
 
-        insertNewUserQuery = "INSERT INTO USERS (dbId, userUri, userId, userName, lastLogin) VALUES (?, ?, ?, ?, ?)"
+        insertNewUserQuery = """
+            INSERT INTO USERS (dbid, useruri, userid, username, lastlogin) 
+            VALUES (%s, %s, %s, %s, %s)
+        """
         userName = st.session_state["UserName"]
+
+        # Execute and commit the query with the provided parameters
         cursor.execute(insertNewUserQuery, (newUserId, userUri, newUserId, userName, unix_timestamp))
         conn.commit()
         st.session_state["UserDbId"] = newUserId
+
         return newUserId
 
 def login():
@@ -213,6 +223,7 @@ def exchange_code_for_token(auth_code):
     else:
         st.toast(f"Error fetching the token: {response.status_code} - {response.text}")
 
+@st.cache_data
 def getUserInfo():
     try:
         requestsAsJsonUser = submitRequest("https://api.spotify.com/v1/me", "Get Users PlaybackState", {})
@@ -242,13 +253,13 @@ def storeTokensInDatabase():
         st.warning("UserUri is not set. Please try logging in again.")
         return
     elif st.session_state["UserUri"] != "" and st.session_state["refresh_token"] == "":
-        userTokens = getQuery("SELECT * FROM USERTOKENS WHERE userUri = ?", [st.session_state["UserUri"]])
+        userTokens = getQuery("SELECT * FROM USERTOKENS WHERE useruri = %s", [st.session_state["UserUri"]])
         if len(userTokens) > 0:
-            if pd.to_datetime(userTokens.iloc[0]['accessTokenEndTime']).tz_localize('UTC') > datetime.now(pytz.utc):
-                st.session_state['access_token'] = userTokens.iloc[0]['accessToken']
-                st.session_state["access_token_endTime"] = pd.to_datetime(userTokens.iloc[0]['accessTokenEndTime']).tz_localize('UTC')
-                st.session_state["refresh_token"] = userTokens.iloc[0]['refreshToken']
-                st.session_state['UserDbId'] = int(userTokens.iloc[0]['dbID'])
+            if pd.to_datetime(userTokens.iloc[0]['accesstokenendtime']) > datetime.now(pytz.utc):
+                st.session_state['access_token'] = userTokens.iloc[0]['accesstoken']
+                st.session_state["access_token_endTime"] = pd.to_datetime(userTokens.iloc[0]['accesstokenendtime'])
+                st.session_state["refresh_token"] = userTokens.iloc[0]['refreshtoken']
+                st.session_state['UserDbId'] = int(userTokens.iloc[0]['dbid'])
                 st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
             else:
                 st.toast("Your access token has expired. Please re-authenticate.")
@@ -257,12 +268,12 @@ def storeTokensInDatabase():
 
     db_id = st.session_state['UserDbId']
     access_token = st.session_state['access_token']
-    expires_at_utc = pd.to_datetime(st.session_state["access_token_endTime"]).tz_convert('UTC') + timedelta(minutes=3)
+    expires_at_utc = pd.to_datetime(st.session_state["access_token_endTime"]).tz_convert('UTC') - timedelta(minutes=3)
     refresh_token = st.session_state['refresh_token']
     userUri = st.session_state.get('UserUri', '').strip()
 
     # Check if a token entry already exists for this user
-    check_token_query = "SELECT id FROM USERTOKENS WHERE dbID = ?"
+    check_token_query = "SELECT id FROM USERTOKENS WHERE dbid = %s"
     cursor.execute(check_token_query, (db_id,))
     result = cursor.fetchone()
 
@@ -270,15 +281,15 @@ def storeTokensInDatabase():
         # Update existing token entry
         update_token_query = """
         UPDATE USERTOKENS 
-        SET accessToken = ?, accessTokenEndTime = ?, refreshToken = ?, lastUpdated = ?, userUri = ? 
-        WHERE dbID = ?
+        SET accesstoken = %s, accesstokenendtime = %s, refreshtoken = %s, lastupdated = %s, useruri = %s
+        WHERE dbid = %s;
         """
         cursor.execute(update_token_query, (access_token, expires_at_utc, refresh_token, datetime.now(pytz.utc), userUri, db_id))
     else:
         # Insert new token entry
         insert_token_query = """
-        INSERT INTO USERTOKENS (dbID, accessToken, accessTokenEndTime, refreshToken, lastUpdated, userUri) 
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO USERTOKENS (dbid, accesstoken, accessokenendtime, refreshtoken, lastupdated, useruri) 
+        VALUES (%s, %s, %s, %s, %s, %s);
         """
         cursor.execute(insert_token_query, (db_id, access_token, expires_at_utc, refresh_token, datetime.now(pytz.utc), userUri))
     
@@ -357,26 +368,26 @@ def getHistoricalData(userUri):
     # Join with SONGDATA table to get song details
     historicalDataQuery = """
     SELECT 
-        ld.userUri, 
-        ld.playlistUri,
-        si.songName,
-        si.artistName,
-        si.albumName,
-        si.songLengthMs,
-        ld.percentageListened,
-        ld.percentageSkipped,
-        ld.songUri,
-        CAST(ld.listeningStartTime AS datetime) AS listeningStartTime
+        ld.useruri, 
+        ld.playlisturi,
+        si.songname,
+        si.artistname,
+        si.albumname,
+        si.songlengthms,
+        ld.percentlistened,
+        ld.percentskipped,
+        ld.songuri,
+        CAST(ld.listeningstarttime AS TIMESTAMPTZ) AS listeningstarttime
     FROM LISTENERDATA ld
-    JOIN SONGDDATA si ON ld.songUri = si.songUri
-    WHERE ld.userUri = ?
-    ORDER BY ld.listeningStartTime DESC
+    JOIN SONGDATA si ON ld.songuri = si.songuri
+    WHERE ld.useruri = %s
+    ORDER BY ld.listeningstarttime DESC
     """
     historicalData = getQuery(historicalDataQuery, [userUri])
 
     # Convert listeningStartTime to user's local timezone and round to nearest second
     user_timezone = pytz.timezone('America/New_York')  # Replace with the user's actual timezone
-    historicalData['listeningStartTime'] = historicalData['listeningStartTime'].apply(
+    historicalData['listeningstarttime'] = historicalData['listeningstarttime'].apply(
         lambda x: x.replace(tzinfo=pytz.utc).astimezone(user_timezone).replace(microsecond=0)
     )
 
@@ -400,26 +411,26 @@ def format_historical_data(df, playlist_name):
     else:
         # Fetch playlist names for each URI
         playlist_names = userPlaylists.set_index('uri')['name'].to_dict()
-        df['Playlist Name'] = df['playlistUri'].map(playlist_names)
+        df['Playlist Name'] = df['playlisturi'].map(playlist_names)
 
-    df = df.sort_values(by='listeningStartTime', ascending=False)
+    df = df.sort_values(by='listeningstarttime', ascending=False)
     df = df.head(150)
 
-    df["Seconds Listened"] = (df["percentageListened"]/100) * df["songLengthMs"]/1000
-    df["Seconds Skipped"] = (df["percentageSkipped"]/100) * df["songLengthMs"]/1000
+    df["Seconds Listened"] = (df["percentlistened"]/100) * df["songlengthms"]/1000
+    df["Seconds Skipped"] = (df["percentskipped"]/100) * df["songlengthms"]/1000
 
     # Rename columns for better readability
     df = df.rename(columns={
-        'songName': 'Song Name',
-        'artistName': 'Artist Name',
-        'albumName': 'Album Name',
-        'percentageListened': 'Percentage Listened',
-        'percentageSkipped': 'Percentage Skipped',
-        'listeningStartTime': 'Listening Start Time'
+        'songname': 'Song Name',
+        'artistname': 'Artist Name',
+        'albumname': 'Album Name',
+        'percentlistened': 'Percentage Listened',
+        'percentskipped': 'Percentage Skipped',
+        'listeningstarttime': 'Listening Start Time'
     })
 
     # Drop the playlistUri and songUri columns
-    df = df.drop(columns=['playlistUri', 'songUri'], errors='ignore')
+    df = df.drop(columns=['playlisturi', 'songuri'], errors='ignore')
     df = df.sort_values(by='Listening Start Time', ascending=False)
 
     # Reorder columns to move Playlist Name to the first position
@@ -435,20 +446,20 @@ def getSummarizedData(historicalData):
 
     
     # Group by 'playlistUri', 'songName', 'artistName', 'albumName' and aggregate sums
-    summarizedData = historicalData.groupby(['playlistUri', 'songName', 'artistName', 'albumName', 'songUri']).agg({
-        'percentageListened': 'sum',
-        'percentageSkipped': 'sum',
-        'listeningStartTime': 'count'  # Count the number of times the song has been listened to in this playlist
+    summarizedData = historicalData.groupby(['playlisturi', 'songname', 'artistname', 'albumname', 'songuri']).agg({
+        'percentlistened': 'sum',
+        'percentskipped': 'sum',
+        'listeningstarttime': 'count'  # Count the number of times the song has been listened to in this playlist
     }).reset_index()
 
     # Rename columns for better readability
     summarizedData = summarizedData.rename(columns={
-        'songName': 'Song Name',
-        'artistName': 'Artist Name',
-        'albumName': 'Album Name',
-        'percentageListened': 'Listened Total',
-        'percentageSkipped': 'Skipped Total',
-        'listeningStartTime': 'Play Count'  # Rename the count column
+        'songname': 'Song Name',
+        'artistname': 'Artist Name',
+        'albumname': 'Album Name',
+        'percentlistened': 'Listened Total',
+        'percentskipped': 'Skipped Total',
+        'listeningstarttime': 'Play Count'  # Rename the count column
     })
 
     # Add a new column for Preference Score
@@ -475,17 +486,17 @@ def highlight_row(row):
 
 def filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax):
     if selectedPlaylistUri is not None:
-        summarizedData = summarizedData[summarizedData['playlistUri'] == selectedPlaylistUri]
+        summarizedData = summarizedData[summarizedData['playlisturi'] == selectedPlaylistUri]
     
     playlist_names = userPlaylists.set_index('uri')['name'].to_dict()
-    summarizedData["Playlist Name"] = summarizedData['playlistUri'].map(playlist_names)
+    summarizedData["Playlist Name"] = summarizedData['playlisturi'].map(playlist_names)
 
     summarizedData = summarizedData[summarizedData['Play Count'] >= playMin]
     summarizedData = summarizedData[summarizedData['Preference Score'] >= scoreMin]
     summarizedData = summarizedData[summarizedData['Preference Score'] <= scoreMax]
 
     # Drop the 'playlistUri' column before returning
-    stylesummarizedData = summarizedData.drop(columns=['playlistUri'])
+    stylesummarizedData = summarizedData.drop(columns=['playlisturi'])
 
     stylesummarizedData = stylesummarizedData[["Playlist Name", "Song Name", "Artist Name", "Album Name", "Play Count", "Preference Score", "Preference Rate"]]
 
@@ -508,13 +519,13 @@ def summarizedAdvancedStats(summarizedData):
     
     bottomSongs = summarizedData.groupby(['Song Name', 'Artist Name']).agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=True).head(5)
 
-    bottomPlaylists = summarizedData.groupby('playlistUri').agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=True).head(5)
+    bottomPlaylists = summarizedData.groupby('playlisturi').agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=True).head(5)
     
     topSongs = summarizedData.groupby(['Song Name', 'Artist Name']).agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=False).head(5)
     
     topArtists = summarizedDataForArtists.groupby('Artist Name').agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=False).head(5)
 
-    topPlaylists = summarizedData.groupby('playlistUri').agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=False).head(5)
+    topPlaylists = summarizedData.groupby('playlisturi').agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=False).head(5)
 
     return topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists
 
@@ -542,7 +553,7 @@ def get_album_cover_url(song_name):
 def search_artist_image_bySongUri(artistName):
 
     #First look for songUris in SONGDATA by artistName, if there are multiple artist names, take the first one by delimiting by ","
-    songUri = getQuery("SELECT songUri FROM SONGDATA WHERE artistName = ?", artistName.split(",")[0])
+    songUri = getQuery("SELECT songUri FROM SONGDATA WHERE artistName = %s", artistName.split(",")[0])
 
     #Check if query comes back empty
     if len(songUri) == 0:
@@ -700,18 +711,18 @@ def clearFromSpotifyPlaylist(playlistUri, songUris):
 
 def clearFromDatabase(playlistUri, toBeClearedDf):
     for index, row in toBeClearedDf.iterrows():
-        deleteQuery = f"DELETE FROM LISTENERDATA WHERE userUri = '{st.session_state['UserUri']}' AND songUri = '{row['songUri']}' AND playlistUri = '{playlistUri}'"
+        deleteQuery = f"DELETE FROM LISTENERDATA WHERE useruri = '{st.session_state['UserUri']}' AND songuri = '{row['songuri']}' AND playlisturi = '{playlistUri}'"
         
         cursor.execute(deleteQuery)
         conn.commit()
 
 def clearFromSpotify(toBeClearedDf):
 
-    playlistUris = list(toBeClearedDf["playlistUri"].unique())
+    playlistUris = list(toBeClearedDf["playlisturi"].unique())
 
     for playlistUri in playlistUris:
-        clearFromSpotifyPlaylist(playlistUri, toBeClearedDf[toBeClearedDf["playlistUri"] == playlistUri])
-        clearFromDatabase(playlistUri, toBeClearedDf[toBeClearedDf["playlistUri"] == playlistUri])
+        clearFromSpotifyPlaylist(playlistUri, toBeClearedDf[toBeClearedDf["playlisturi"] == playlistUri])
+        clearFromDatabase(playlistUri, toBeClearedDf[toBeClearedDf["playlisturi"] == playlistUri])
 
 
 
