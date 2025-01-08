@@ -188,9 +188,9 @@ def exchange_code_for_token(auth_code):
     payload = {
         'grant_type': 'authorization_code',
         'code': auth_code,
-        'redirect_uri': st.secrets["REDIRECT_URI"],
-        'client_id': st.secrets["CLIENT_ID"],
-        'client_secret': st.secrets["CLIENT_SECRET"]
+        'redirect_uri': st.secrets["spotify"]["REDIRECT_URI"],
+        'client_id': st.secrets["spotify"]["CLIENT_ID"],
+        'client_secret': st.secrets["spotify"]["CLIENT_SECRET"]
     }
     
     response = requests.post(token_url, data=payload)
