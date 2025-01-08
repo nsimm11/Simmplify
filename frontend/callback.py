@@ -151,7 +151,7 @@ def getUserId(userUri):
     userId = getQuery(userIdQuery, [userUri])
     st.write(userId)
     
-    if len(userId) > 0:
+    if len(userId.dropna()) > 0:
         userId = userId.iloc[0].to_dict()
         st.write(st.session_state["UserName"], userId["username"])
         if (st.session_state["UserName"]) != userId["username"]: 
