@@ -83,7 +83,7 @@ def connect_to_db_postgres():
     post_server = SSHTunnelForwarder(
         ssh_address_or_host="ssh.pythonanywhere.com",
         ssh_username="nsimm22",
-        ssh_private_key="ssh_key_streamlit",
+        ssh_private_key=private_key,
         remote_bind_address=("nsimm22-4282.postgres.pythonanywhere-services.com", 14282),
         local_bind_address=("localhost", 5432),
     )
