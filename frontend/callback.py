@@ -149,6 +149,7 @@ def getUserId(userUri):
 
     # Use parameterized query to prevent SQL injection
     userId = getQuery(userIdQuery, [userUri])
+    st.write(userId)
     
     if len(userId) > 0:
         userId = userId.iloc[0].to_dict()
