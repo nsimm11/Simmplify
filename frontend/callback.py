@@ -152,9 +152,11 @@ def getUserId(userUri):
     
     if len(userId) > 0:
         userId = userId.iloc[0].to_dict()
+        st.write(st.session_state["UserName"], userId["username"])
         if (st.session_state["UserName"]) != userId["username"]: 
             errorLog("Username in DB and username from Spotify do not match")
-            return ""
+            st.write("Please reauthenticate from the home page")
+            return None
             
         else:
             st.toast(f"Thanks for returning {userId['username']}!")
