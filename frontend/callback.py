@@ -154,7 +154,7 @@ def getUserId(userUri):
         st.session_state["UserDbId"] = userId["userId"]
         return userId["userId"]
     else:
-        newUserQuery = "SELECT MAX(userId) FROM dbo.USERS"
+        newUserQuery = "SELECT MAX(userId) FROM USERS"
         newUserId = getQuery(newUserQuery).values[0][0]
         if newUserId is None:
             newUserId = 1
@@ -165,7 +165,7 @@ def getUserId(userUri):
         utc_now = datetime.now(pytz.utc)
         unix_timestamp = int(utc_now.timestamp())
 
-        insertNewUserQuery = "INSERT INTO dbo.USERS (dbId, userUri, userId, userName, lastLogin) VALUES (?, ?, ?, ?, ?)"
+        insertNewUserQuery = "INSERT INTO USERS (dbId, userUri, userId, userName, lastLogin) VALUES (?, ?, ?, ?, ?)"
         userName = st.session_state["UserName"]
         cursor.execute(insertNewUserQuery, (newUserId, userUri, newUserId, userName, unix_timestamp))
         conn.commit()
