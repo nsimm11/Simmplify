@@ -79,6 +79,7 @@ def connect_to_db_postgres():
 
     postgres_hostname = st.secrets["postgres"]["hostname"]
     postgres_host_port = st.secrets["postgres"]["port"]
+    st.write(postgres_hostname)
     postgres_username = st.secrets["postgres"]["username"]
     postgres_password = st.secrets["postgres"]["password"]
     postgres_database = st.secrets["postgres"]["database"]
