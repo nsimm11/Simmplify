@@ -990,7 +990,10 @@ else:
                     "CurrentPlaylistUri": ""
                 }
 
-        else: userCurrentSongPlayingDict["SongCurrentPosition"] = min(float(userCurrentSongPlayingDict["duration_ms"]), float(userCurrentSongPlayingDict["SongCurrentPosition"]) + 1000)
+        if userCurrentSongPlayingDict:
+            userCurrentSongPlayingDict["SongCurrentPosition"] = min(float(userCurrentSongPlayingDict["duration_ms"]), float(userCurrentSongPlayingDict["SongCurrentPosition"]) + 1000)
+        else:
+            userCurrentSongPlayingDict["SongCurrentPosition"] = 1
 
         with player.container():
             c1, c2, c3, c4 = st.columns(4)
