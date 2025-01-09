@@ -369,7 +369,7 @@ def spotifyUsersPlaylists(username):
 
 def getHistoricalData(userUri):
 
-    st.write(getQuery("SELECT * FROM LISTENERDATA",[]))
+    st.write(getQuery("SELECT * FROM SONGDATA",[]))
 
     # Join with SONGDATA table to get song details
     historicalDataQuery = """
