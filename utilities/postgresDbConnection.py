@@ -1,21 +1,25 @@
 import psycopg2
 from sshtunnel import SSHTunnelForwarder
 import os
+import tempfile
+
+import credentials
+
+
 
 def connect_to_db():
-    # Load private key from secrets
-    private_key = "ashdfkjas"
+    ssh_private_key = credentials.private_key_ssh
 
     # Write the private key to a temporary file
-    with open("ssh_key_streamlit", "w") as key_file:
-        key_file.write(private_key)
-    os.chmod("ssh_key_streamlit", 0o600)
+    with tempfile.NamedTemporaryFile("w", delete=False) as temp_key_file:
+        temp_key_file.write(ssh_private_key)
+        temp_key_path = temp_key_file.name
 
     # Set up SSH tunnel
     server = SSHTunnelForwarder(
         ssh_address_or_host="ssh.pythonanywhere.com",
         ssh_username="nsimm22",
-        ssh_private_key="ssh_key_streamlit",
+        ssh_private_key=temp_key_path,
         remote_bind_address=("nsimm22-4282.postgres.pythonanywhere-services.com", 14282),
         local_bind_address=("localhost", 5432),
     )

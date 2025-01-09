@@ -149,11 +149,9 @@ def getUserId(userUri):
 
     # Use parameterized query to prevent SQL injection
     userId = getQuery(userIdQuery, [userUri])
-    st.write(userId)
     
     if len(userId.dropna()) > 0:
         userId = userId.iloc[0].to_dict()
-        st.write(st.session_state["UserName"], userId["username"])
         if (st.session_state["UserName"]) != userId["username"]: 
             errorLog("Username in DB and username from Spotify do not match")
             st.write("Please reauthenticate from the home page")
@@ -370,6 +368,9 @@ def spotifyUsersPlaylists(username):
     return userPlaylists
 
 def getHistoricalData(userUri):
+
+    st.write(getQuery("SELECT * FROM LISTENERDATA",[]))
+
     # Join with SONGDATA table to get song details
     historicalDataQuery = """
     SELECT 
@@ -694,6 +695,8 @@ def display_stats(column, title, statType, display_percentage):
                 )
 
             count += 1
+    else:
+        st.mardown("##### No songs yet! Keep listening and come back soon!")
 
 def clearFromSpotifyPlaylist(playlistUri, songUris):
     # Extract the playlist ID from the URI
