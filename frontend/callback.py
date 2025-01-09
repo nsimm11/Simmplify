@@ -678,7 +678,7 @@ def display_stats(column, title, statType, display_percentage):
                     st.markdown(f"<img src='{album_cover_url}' width='80' height='80' style='object-fit: cover; padding: 5px;'>", unsafe_allow_html=True)
 
                 elif statType == "Playlist":
-                    playlist_image_url = get_playlist_image_url(item.playlistUri)
+                    playlist_image_url = get_playlist_image_url(item.playlisturi)
                     st.markdown(f"<img src='{playlist_image_url}' width='80' height='80' style='object-fit: cover; padding: 5px;'>", unsafe_allow_html=True)
 
             # Display percentage listened or skipped
