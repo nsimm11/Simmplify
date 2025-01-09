@@ -129,19 +129,19 @@ def selectAllSongInfoData(cursor_mssql):
 def renameColumns(df):
     """Rename columns for better readability."""
     return df.rename(columns={
-        #'percentagelistened': 'percentlistened',
-        #'percentageskipped': 'percentskipped',
+        'percentagelistened': 'percentlistened',
+        'percentageskipped': 'percentskipped',
     })
 
 
 def getTargetTableSchema(cursor_post, old_table_name, new_table_name):
     """Retrieve the column names and data types of the target PostgreSQL table."""
     query = '''
-        SELECT column_name, data_type 
-        FROM information_schema.columns 
-        WHERE table_name = %s
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_name = 'listenerdata';
     '''
-    cursor_post.execute(query, ("songdata",))
+    cursor_post.execute(query)
     return cursor_post.fetchall()  # [(column_name, data_type), ...]
 
 
@@ -249,10 +249,10 @@ def generateInsertQuery(new_table_name, target_columns):
     """Generate the INSERT query dynamically based on the target columns."""
     columns = ", ".join(target_columns)
     values_placeholder = ", ".join(["%s"] * len(target_columns))  # Placeholder for parameterized query
-    return f"INSERT INTO {new_table_name} ({columns}) VALUES ({values_placeholder})"
+    return f"INSERT INTO {new_table_name} ({columns}) VALUES ({values_placeholder});"
 
 
-def insertData(cursor_post, listenerDataFrame, target_columns, insert_query):
+def insertData(cursor_post, listenerDataFrame, target_columns, insert_query, conn_post):
     """
     Insert data into the target PostgreSQL table, ensuring all types are compatible with psycopg2.
 
@@ -275,16 +275,18 @@ def insertData(cursor_post, listenerDataFrame, target_columns, insert_query):
         for row in rows:
             cursor_post.execute(insert_query, tuple(row))
         print("All data inserted successfully!")
+        conn_post.commit()
         return True
     except Exception as e:
+        conn_post.rollback() 
         print(f"Error inserting data: {e}")
         return False
 
-def insertAllListenerData(cursor_post, df,old_table_name, new_table_name):
+def insertAllListenerData(cursor_post, df,old_table_name, new_table_name, conn_post):
     """Main function to insert listener data into PostgreSQL."""
 
     # Step 1: Rename columns
-    #df = renameColumns(df)
+    df = renameColumns(df)
 
     # Step 2: Get the target table schema
     target_schema = getTargetTableSchema(cursor_post, old_table_name, new_table_name)
@@ -307,8 +309,10 @@ def insertAllListenerData(cursor_post, df,old_table_name, new_table_name):
     # Step 5: Generate the INSERT query
     insert_query = generateInsertQuery(new_table_name, target_columns)
 
+    print("INSERT Query: ", insert_query)
+
     # Step 6: Insert data with type conversion
-    success = insertData(cursor_post, df, target_columns, insert_query)
+    success = insertData(cursor_post, df, target_columns, insert_query, conn_post)
     
     return success
 
@@ -326,16 +330,16 @@ def validateInsertedData(cursor_post, df, old_table_name, new_table_name):
         True if the validation passes, False otherwise.
     """
     # Fetch data from PostgreSQL table
-    query = f"SELECT * FROM songdata"
+    query = f"SELECT * FROM {new_table_name};"
     cursor_post.execute(query)
     results = cursor_post.fetchall()
 
     # Fetch column names from the target table
     cursor_post.execute(f"""
-        SELECT column_name 
-        FROM information_schema.columns 
-        WHERE table_name = %s
-        """, ("songdata",))
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_name = 'listenerdata';
+        """, (new_table_name,))
     column_names = [row[0] for row in cursor_post.fetchall()]
 
     print(results)
@@ -364,11 +368,13 @@ def validateInsertedData(cursor_post, df, old_table_name, new_table_name):
 
 
 # Usage example
-#listenerDataMSSQL = selectAllListenerData(cursor_mssql)
-songInfoDataMSSQL = selectAllSongInfoData(cursor_mssql)
-print(songInfoDataMSSQL.head())
-passCheck = insertAllListenerData(cursor_post, songInfoDataMSSQL, "SONGINFO", "songdata")
-validateInsertedData(cursor_post, songInfoDataMSSQL, "SONGINFO","songdata")
+olddf = selectAllListenerData(cursor_mssql)
+#olddf = selectAllSongInfoData(cursor_mssql)
+print(olddf.head())
+passCheck = validateInsertedData(cursor_post, olddf, "LISTENERDATA","LISTENERDATA")
+if not passCheck:
+    #passCheck = insertAllListenerData(cursor_post, olddf, "LISTENERDATA", "LISTENERDATA", conn_post)
+    validateInsertedData(cursor_post, olddf, "LISTENERDATA","LISTENERDATA")
 
 conn_post.close()
 server.stop()
