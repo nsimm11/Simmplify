@@ -369,8 +369,6 @@ def spotifyUsersPlaylists(username):
 
 def getHistoricalData(userUri):
 
-    st.write(getQuery("SELECT * FROM SONGDATA",[]))
-
     # Join with SONGDATA table to get song details
     historicalDataQuery = """
     SELECT 
@@ -668,7 +666,7 @@ def display_stats(column, title, statType, display_percentage):
                 elif statType == "Song":
                     st.markdown(f"**{item['Song Name']}** by **{item['Artist Name']}**")
                 elif statType == "Playlist":
-                    st.markdown(f"**{userPlaylists[userPlaylists['uri'] == item['playlistUri']]['name'].values[0] if item['playlistUri'] in userPlaylists['uri'].values else 'Non-User Playlist'}**")
+                    st.markdown(f"**{userPlaylists[userPlaylists['uri'] == item['playlisturi']]['name'].values[0] if item['playlisturi'] in userPlaylists['uri'].values else 'Non-User Playlist'}**")
 
             # Display artist image or album cover
             with cols[2]:
