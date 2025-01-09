@@ -566,7 +566,7 @@ def search_artist_image_bySongUri(artistName):
         return None
 
     # Define the endpoint for searching the artist
-    search_url = "https://api.spotify.com/v1/tracks/" + str(songUri["songUri"].iloc[0])
+    search_url = "https://api.spotify.com/v1/tracks/" + str(songUri["songuri"].iloc[0])
     response = submitRequest(search_url, "Get Artist Image", {})
 
     if response and 'album' in response and response['album']['images']:
