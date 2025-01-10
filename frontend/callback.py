@@ -501,19 +501,26 @@ def getSummarizedData(historicalData):
 
     # Sort by Preference Rate with negative values first, then 0 to 100, and finally 100
     summarizedData['Preference Rate'] = summarizedData['Preference Rate'].astype(int)  # Ensure it's float for proper sorting
-    summarizedData = summarizedData.sort_values(by='Preference Rate', ascending=True)  # Sort in ascending order
+    summarizedData = summarizedData.sort_values(by='Preference Score', ascending=True)  # Sort in ascending order
 
     return summarizedData
 
 # Apply conditional formatting based on Preference Score
 def highlight_row(row):
+
     score = row['Preference Score']
-    if score > 0:
-        return [f'background-color: rgba(0, 255, 25, 0.5); color: black'] * len(row)
-    elif score > -300:
-        return [f'background-color: rgba(255, 255, 25, 0.5); color: black'] * len(row)  # Slightly darker yellow
+    if score >= 100:
+        color = plt.cm.RdYlGn(0.99)
+    elif score <= -300:
+        color = plt.cm.RdYlGn(0)
     else:
-        return [f'background-color: rgba(255, 0, 25, 0.5); color: black'] * len(row)
+        normalized_score = (score + 300) / 400  # Normalize to [0, 1]
+        color = plt.cm.RdYlGn(normalized_score)  # Get color from colormap
+
+    return [
+        f'background-color: rgba({int(color[0] * 255)}, {int(color[1] * 255)}, {int(color[2] * 255)}, 1); color: {"black" if -300 <= row["Preference Score"] <= 100 else "white"}' 
+        for _ in row
+    ]
 
 def filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax):
     if selectedPlaylistUri is not None:
@@ -987,6 +994,7 @@ else:
     startTime = datetime.now(pytz.utc)
 
     with biggestHits.container():
+
         # Clear previous columns
         as1, as2, as3 = st.columns(3, gap="medium", border=True)
 
