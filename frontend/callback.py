@@ -164,12 +164,14 @@ def getUserId(userUri):
     if userUri != "" and st.session_state["UserUri"] == "":
         st.session_state["UserUri"] = userUri
         userTokens = getQuery("SELECT * FROM USERTOKENS WHERE useruri = %s", [userUri])
+        st.write("userTokens:", userTokens)
 
     # Ensure the correct table name and schema
-    userIdQuery = "SELECT * FROM USERS WHERE useruri = %s"
+    userIdQuery = "SELECT * FROM USERS WHERE useruri = %s;"
     userUri = st.session_state['UserUri'].strip()
+    if userUri == "" or userUri == None:
+        st.write("Trying to get users info without userUri")
 
-    # Use parameterized query to prevent SQL injection
     userId = getQuery(userIdQuery, [userUri])
     
     if len(userId.dropna()) > 0:
