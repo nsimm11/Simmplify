@@ -848,6 +848,8 @@ else:
         </div>
     """, unsafe_allow_html=True)
 
+    cursor = st.session_state["cursor"]
+
     # Call the login function at the start of the script
     login()
 
