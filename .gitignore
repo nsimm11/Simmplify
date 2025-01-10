@@ -7,7 +7,7 @@ databaseSetup.py
 
 frontend/.streamlit/secrets.toml
 *ssh*
-*.toml
+*secrets.toml
 *.csv
 
 utilities\postgresDbConnection.py
