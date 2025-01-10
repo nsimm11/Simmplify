@@ -643,7 +643,6 @@ def get_playlist_image_url(playlistUri):
         return "https://via.placeholder.com/150/CCCCCC/FFFFFF?text=No+Image"  # Placeholder grey box
 
 
-@st.cache_data
 def get_NoahImage():
     
     search_url = "https://api.spotify.com/v1/users/nsimm22/"
