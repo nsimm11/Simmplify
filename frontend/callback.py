@@ -152,7 +152,7 @@ def getQuery(query, params=None):
         st.session_state["cursor"].execute(query, params)
         Data = pd.DataFrame.from_records(
             st.session_state["cursor"].fetchall(), 
-            columns=[col.name for col in cursor.description]
+            columns=[col.name for col in st.session_state["cursor"].description]
         )
         return Data
     except psycopg2.Error as e:
