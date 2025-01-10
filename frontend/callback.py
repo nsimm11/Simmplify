@@ -160,8 +160,8 @@ def getQuery(query, params=None):
         return pd.DataFrame()  # Return an empty DataFrame on error
 
 def getUserId(userUri):
-    if cursor == None or cursor == "":
-        cursor = st.session_state["cursor"]
+    
+    cursor = st.session_state["cursor"]
 
     if userUri != "" and st.session_state["UserUri"] == "":
         st.session_state["UserUri"] = userUri
