@@ -166,8 +166,9 @@ def getUserId(userUri):
         userTokens = getQuery("SELECT * FROM USERTOKENS WHERE useruri = %s", (userUri,))
 
     # Ensure the correct table name and schema
-    userIdQuery = "SELECT * FROM USERS WHERE useruri = %s;"
     userUri = st.session_state['UserUri'].strip()
+    userIdQuery = f"SELECT * FROM USERS WHERE useruri = '{userUri}';"
+
     if userUri == "" or userUri == None:
         st.write("Trying to get users info without userUri")
 
