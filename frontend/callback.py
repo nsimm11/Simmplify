@@ -79,6 +79,8 @@ def connect_to_db_postgres():
         temp_key_path = temp_key_file.name
 
     try:
+        st.write(postgres_database,postgres_username,postgres_password)
+
         # Establish SSH tunnel and connect to PostgreSQL
         post_server = sshtunnel.SSHTunnelForwarder(
                 ssh_address_or_host=('ssh.pythonanywhere.com', 22),
@@ -89,7 +91,6 @@ def connect_to_db_postgres():
         )
         post_server.start()
 
-        st.write(postgres_database,postgres_username,postgres_password)
 
         try:
             conn = psycopg2.connect(
