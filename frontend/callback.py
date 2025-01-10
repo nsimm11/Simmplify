@@ -109,8 +109,10 @@ def connect_to_db_postgres():
 
     except:
         st.write("Error connecting to the database")
+        return "", ""
 
 conn, cursor = connect_to_db_postgres()
+st.stop()
 
 def hide_streamlit_style():
     hide_style = """
