@@ -511,7 +511,7 @@ def highlight_row(row):
     if score > 0:
         return ['background-color: lightgreen'] * len(row)
     elif score > -300:
-        return ['background-color: lightyellow'] * len(row)
+        return [f'background-color: rgba(255, 255, 153, 1); color: black'] * len(row)  # Slightly darker yellow
     else:
         return ['background-color: lightcoral'] * len(row)
 
