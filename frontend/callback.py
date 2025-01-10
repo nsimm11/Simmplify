@@ -706,7 +706,7 @@ def display_stats(column, title, statType, display_percentage):
 
             count += 1
     else:
-        st.markdown("##### No songs yet! Keep listening and come back soon!")
+        st.markdown(f"<div style='color: #FFFFFF; text-align: center;'>{title}</div>", unsafe_allow_html=True)
 
 def clearFromSpotifyPlaylist(playlistUri, songUris):
     # Extract the playlist ID from the URI
