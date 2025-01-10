@@ -46,9 +46,7 @@ def connect_to_db_postgres():
         ssh_username="nsimm22",
         ssh_private_key=temp_key_path,
         remote_bind_address=(postgres_hostname, 14282),
-        local_bind_address=("localhost", 5432),
-        ssh_timeout=10.0,  # Increase SSH connection timeout
-        tunnel_timeout=10.0,  # Increase tunnel setup timeout
+        local_bind_address=("localhost", 5432)
     )
     server.start()
 
