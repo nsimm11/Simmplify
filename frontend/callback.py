@@ -117,7 +117,7 @@ def connect_to_db_postgres():
         st.write("Error connecting to the database via SSH, please refresh")
         return "", ""
 
-if st.session_state['cursor'] == None and st.session_state['conn'] == None:
+if (st.session_state['cursor'] == None or st.session_state['cursor'] == "") and (st.session_state['conn'] == None or st.session_state['conn'] == ""):
     st.session_state['conn'], st.session_state['cursor'] = connect_to_db_postgres()
     conn = st.session_state["conn"]
     cursor = st.session_state["cursor"]
