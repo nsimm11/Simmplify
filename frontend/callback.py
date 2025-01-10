@@ -304,7 +304,7 @@ def storeTokensInDatabase():
     else:
         # Insert new token entry
         insert_token_query = """
-        INSERT INTO USERTOKENS (dbid, accesstoken, accessokenendtime, refreshtoken, lastupdated, useruri) 
+        INSERT INTO USERTOKENS (dbid, accesstoken, accesstokenendtime, refreshtoken, lastupdated, useruri) 
         VALUES (%s, %s, %s, %s, %s, %s);
         """
         cursor.execute(insert_token_query, (db_id, access_token, expires_at_utc, refresh_token, datetime.now(pytz.utc), userUri))
