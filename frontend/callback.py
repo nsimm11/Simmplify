@@ -1030,6 +1030,7 @@ else:
                     summarizedData = getSummarizedData(historicalData)
                     summarizedListeningData, lengthPostFilter, filteredSummarizedData = filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
                     historicalDataStyled = format_historical_data(historicalData, selectedPlaylistName)
+                    topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists = summarizedAdvancedStats(summarizedData)
 
                 c2.markdown(f'SONG: {userCurrentSongPlayingDict["name"]}')
                 c2.markdown(f'Artists: {",".join(userCurrentSongPlayingDict["artists"])}')
