@@ -78,30 +78,39 @@ def connect_to_db_postgres():
         temp_key_file.write(ssh_private_key)
         temp_key_path = temp_key_file.name
 
-    # Establish SSH tunnel and connect to PostgreSQL
-    post_server = sshtunnel.SSHTunnelForwarder(
-            ssh_address_or_host=('ssh.pythonanywhere.com', 22),
-            ssh_username=ssh_username,
-            ssh_pkey=temp_key_path,
-            ssh_private_key_password=ssh_private_key_passphrase,
-            remote_bind_address=(postgres_hostname, postgres_host_port)
-    )
-    post_server.start()
+    try:
+        # Establish SSH tunnel and connect to PostgreSQL
+        post_server = sshtunnel.SSHTunnelForwarder(
+                ssh_address_or_host=('ssh.pythonanywhere.com', 22),
+                ssh_username=ssh_username,
+                ssh_pkey=temp_key_path,
+                ssh_private_key_password=ssh_private_key_passphrase,
+                remote_bind_address=(postgres_hostname, postgres_host_port)
+        )
+        post_server.start()
+    except:
+        st.warning("Error connecting to database via SSH, please refresh the page")
 
-    connection = psycopg2.connect(
-        user=postgres_username,
-        password=postgres_password,
-        host='127.0.0.1',
-        port=post_server.local_bind_port,
-        database=postgres_database,
-        options="-c tcp_keepalives_idle=60 -c tcp_keepalives_interval=30 -c tcp_keepalives_count=10",
-        sslmode="disable"
-    )
-        
-    return connection
 
-conn = connect_to_db_postgres()
-cursor = conn.cursor()
+    try:
+        connection = psycopg2.connect(
+            user=postgres_username,
+            password=postgres_password,
+            host='127.0.0.1',
+            port=post_server.local_bind_port,
+            database=postgres_database,
+            options="-c tcp_keepalives_idle=60 -c tcp_keepalives_interval=30 -c tcp_keepalives_count=10",
+            sslmode="disable"
+        )
+        conn = connect_to_db_postgres()
+        cursor = conn.cursor()
+            
+        return conn, cursor
+
+    except:
+        st.write("Error connecting to the database")
+
+conn, cursor = connect_to_db_postgres()
 
 def hide_streamlit_style():
     hide_style = """
@@ -992,10 +1001,12 @@ else:
                     "CurrentPlaylistUri": ""
                 }
 
-        if "SongCurrentPosition" not in userCurrentSongPlayingDict:
-            userCurrentSongPlayingDict["SongCurrentPosition"] = min(float(userCurrentSongPlayingDict["duration_ms"]), float(userCurrentSongPlayingDict["SongCurrentPosition"]) + 1000)
-        else:
+        elif "SongCurrentPosition" not in userCurrentSongPlayingDict:
             userCurrentSongPlayingDict["SongCurrentPosition"] = 1
+
+        else:
+            userCurrentSongPlayingDict["SongCurrentPosition"] = min(float(userCurrentSongPlayingDict["duration_ms"]), float(userCurrentSongPlayingDict["SongCurrentPosition"]) + 1000)
+
 
         with player.container():
             c1, c2, c3, c4 = st.columns(4)
