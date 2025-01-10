@@ -112,7 +112,9 @@ def connect_to_db_postgres():
         return "", ""
 
 conn, cursor = connect_to_db_postgres()
-st.stop()
+
+if conn == "" and cursor == "":
+    st.stop()
 
 def hide_streamlit_style():
     hide_style = """
