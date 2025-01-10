@@ -96,7 +96,7 @@ def connect_to_db_postgres():
         connection = psycopg2.connect(
             user=postgres_username,
             password=postgres_password,
-            host='127.0.0.1',
+            host='localhost',
             port=post_server.local_bind_port,
             database=postgres_database,
             options="-c tcp_keepalives_idle=60 -c tcp_keepalives_interval=30 -c tcp_keepalives_count=10",
@@ -108,7 +108,7 @@ def connect_to_db_postgres():
         return conn, cursor
 
     except:
-        st.write("Error connecting to the database")
+        st.write("Error connecting to the database, please refresh")
         return "", ""
 
 conn, cursor = connect_to_db_postgres()
