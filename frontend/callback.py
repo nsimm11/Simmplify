@@ -175,7 +175,7 @@ def getUserId(userUri):
 
         insertNewUserQuery = """
             INSERT INTO USERS (dbid, useruri, userid, username, lastlogin) 
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s);
         """
         userName = st.session_state["UserName"]
 
@@ -971,6 +971,8 @@ else:
             display_stats(bottomPlaylists, "Most Skipped Playlists", "Playlist", display_percentage='skipped')
 
 
+    userCurrentSongPlayingDict = {}
+
     while True:
     
         if (datetime.now(pytz.utc) - startTime).total_seconds() % 10 < 1:
@@ -990,7 +992,7 @@ else:
                     "CurrentPlaylistUri": ""
                 }
 
-        if userCurrentSongPlayingDict:
+        if "SongCurrentPosition" not in userCurrentSongPlayingDict:
             userCurrentSongPlayingDict["SongCurrentPosition"] = min(float(userCurrentSongPlayingDict["duration_ms"]), float(userCurrentSongPlayingDict["SongCurrentPosition"]) + 1000)
         else:
             userCurrentSongPlayingDict["SongCurrentPosition"] = 1

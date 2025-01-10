@@ -1,14 +1,16 @@
 # Import necessary libraries
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
-import csv
 import time
-import pyodbc
 from datetime import datetime, timedelta
 import requests
 import pandas as pd
 from pandas import json_normalize
 import pytz
+import psycopg2
+from sshtunnel import SSHTunnelForwarder
+import tempfile
+import numpy as np
 
 import credentials as credentials
 
@@ -21,12 +23,46 @@ sp_oauth = SpotifyOAuth(client_id=credentials.CLIENT_ID,
                         scope=SCOPE)
 
 #connection string 
-conn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
-                     f'Server={credentials.dbConnectionLocation};'
-                     f'Database={credentials.dbID};'
-                     'TrustServerCertificate=yes;'
-                     f'UID={credentials.dbUsername};PWD={credentials.dbPassword}')
+def connect_to_db_postgres():
+    # Load SSH and PostgreSQL secrets
+    ssh_username =  credentials.username_ssh
+    ssh_private_key = credentials.private_key_ssh
+    ssh_private_key_passphrase = credentials.private_key_passphrase
 
+    postgres_hostname = credentials.hostname
+    postgres_host_port = credentials.port
+    postgres_username = credentials.username_post
+    postgres_password = credentials.password_post
+    postgres_database = credentials.database_post
+
+    # Write the private key to a temporary file
+    with tempfile.NamedTemporaryFile("w", delete=False) as temp_key_file:
+        temp_key_file.write(ssh_private_key)
+        temp_key_path = temp_key_file.name
+
+    # Set up SSH tunnel
+    server = SSHTunnelForwarder(
+        ssh_address_or_host="ssh.pythonanywhere.com",
+        ssh_username="nsimm22",
+        ssh_private_key=temp_key_path,
+        remote_bind_address=("nsimm22-4282.postgres.pythonanywhere-services.com", 14282),
+        local_bind_address=("localhost", 5432),
+    )
+    server.start()
+
+    # Connect to the PostgreSQL database via the SSH tunnel
+    conn = psycopg2.connect(
+        dbname="simmplify",
+        user="simmplify",
+        password="2*PlayaOnPelada",
+        host="localhost",
+        port=server.local_bind_port,
+        sslmode="disable",
+    )
+        
+    return conn, server
+
+conn, server = connect_to_db_postgres()
 cursor = conn.cursor()
 
 # Example of storing previous playback data
@@ -35,7 +71,7 @@ previous_playback_data = {}
 # Function to refresh access tokens
 def refresh_access_tokens():
     # Query to get all users with refresh tokens and their access token expiration times
-    query = "SELECT dbID, refreshToken, accessTokenEndTime, userUri, accessToken FROM UserTokens WHERE refreshToken IS NOT NULL"
+    query = "SELECT dbid, refreshtoken, accesstokenendtime, useruri, accesstoken FROM usertokens WHERE refreshtoken IS NOT NULL"
     cursor.execute(query)
     users = cursor.fetchall()
 
@@ -58,9 +94,9 @@ def refresh_access_tokens():
                 
                 # Update existing token entry
                 update_access_token_query = """
-                UPDATE UserTokens 
-                SET accessToken = ?, accessTokenEndTime = ?, lastUpdated = ? 
-                WHERE dbID = ?
+                UPDATE usertokens 
+                SET accesstoken = %s, accesstokenendtime = %s, lastupdated = %s 
+                WHERE dbid = %s;
                 """
                 expires_at_utc = datetime.fromtimestamp(token_info['expires_at'], pytz.utc)
                 cursor.execute(update_access_token_query, (access_token, expires_at_utc, datetime.now(pytz.utc), db_id))
@@ -129,33 +165,33 @@ def process_playback_data(previous_playback, current_playback, user_uri):
             listening_start_time = datetime.now(pytz.utc)
             print(f"Listening start time recorded: {listening_start_time}")
             
-            # Check if song info is already in SONGINFO table
-            check_song_query = "SELECT songUri FROM SONGINFO WHERE songUri = ?"
+            # Check if song info is already in SONGDATA table
+            check_song_query = "SELECT songuri FROM SONGDATA WHERE songuri = %s;"
             cursor.execute(check_song_query, (previous_track_id,))
             song_exists = cursor.fetchone()
             
             if not song_exists:
-                print(f"Song {previous_track_id} not found in SONGINFO. Inserting new record.")
-                # Insert song info into SONGINFO table
+                print(f"Song {previous_track_id} not found in SONGDATA. Inserting new record.")
+                # Insert song info into SONGDATA table
                 song_name = previous_playback['item']['name']
                 artist_name = ', '.join([artist['name'] for artist in previous_playback['item']['artists']])
                 album_name = previous_playback['item']['album']['name']
                 song_length_ms = previous_playback['item']['duration_ms']
                 
                 insert_song_info_query = """
-                INSERT INTO SONGINFO (songUri, songName, artistName, albumName, songLengthMs) 
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO SONGDATA (songuri, songname, artistname, albumname, songlengthms) 
+                VALUES (%s, %s, %s, %s, %s);
                 """
                 cursor.execute(insert_song_info_query, (previous_track_id, song_name, artist_name, album_name, song_length_ms))
                 conn.commit()
                 print(f"Inserted song info for {previous_track_id}: {song_name} by {artist_name}")
             else:
-                print(f"Song {previous_track_id} already exists in SONGINFO.")
+                print(f"Song {previous_track_id} already exists in SONGDATA.")
             
             # Insert into LISTENERDATA table using previous_playlist_uri
             insert_listener_data_query = """
-            INSERT INTO LISTENERDATA (userUri, playlistUri, songUri, percentageListened, percentageSkipped, listeningStartTime) 
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO LISTENERDATA (useruri, playlisturi, songuri, percentlistened, percentskipped, listeningstarttime) 
+            VALUES (%s, %s, %s, %s, %s, %s);
             """
             cursor.execute(insert_listener_data_query, (user_uri, previous_playlist_uri, previous_track_id, percentage_listened, percentage_skipped, listening_start_time))
             conn.commit()
@@ -185,12 +221,12 @@ def submitRequest(endpoint, functionName, params, access_token):
 def getSpotifyHistoricalData(userUri, historicalData, access_token):
     # Find the most recent listeningStartTime in the historicalData DataFrame
     if len(historicalData) > 0:
-        most_recent_listening = historicalData['listeningStartTime'].max()
+        most_recent_listening = historicalData['listeningstarttime'].max()
         most_recent_listening_timestamp = int((most_recent_listening + timedelta(seconds=60)).timestamp() * 1000)
         print("Most Recent Listening Timestamp: ", most_recent_listening_timestamp)
     else:
         print("No Historical Data Found")
-        return pd.DataFrame(columns=['playlistUri', 'songUri', 'listenedPercentage', 'skippedPercentage', 'listeningStartTime'])
+        return pd.DataFrame(columns=['playlisturi', 'songuri', 'listenedpercentage', 'skippedpercentage', 'listeningstarttime'])
 
     all_songs = []
     liked_songs_uri = f'spotify:user:{userUri}:collection'  # Define the Liked Songs URI
@@ -211,38 +247,38 @@ def getSpotifyHistoricalData(userUri, historicalData, access_token):
         # Process each song and append to the all_songs list
         for item in spotifyHistoricalData['items']:
             song_data = {
-                'playlistUri':  item["context"]["uri"] if item["context"] and item["context"]["uri"] is not None else liked_songs_uri,
-                'songUri': item['track']['uri'],
-                'percentageListened': 100,
-                'percentageSkipped': 0,
-                'listeningStartTime': item['played_at']
+                'playlisturi':  item["context"]["uri"] if item["context"] and item["context"]["uri"] is not None else liked_songs_uri,
+                'songuri': item['track']['uri'],
+                'percentlistened': 100,
+                'percentskipped': 0,
+                'listeningstarttime': item['played_at']
             }
 
-            # Check if the songUri is already in the SONGINFO table
+            # Check if the songUri is already in the SONGDATA table
             check_song_query = """
-            SELECT songUri, songName, artistName, albumName, songLengthMs 
-            FROM SONGINFO 
-            WHERE songUri = ?
+            SELECT songuri, songName, artistname, albumname, songlengthms 
+            FROM SONGDATA
+            WHERE songuri = %s;
             """
-            cursor.execute(check_song_query, (song_data['songUri'],))
+            cursor.execute(check_song_query, (song_data['songuri'],))
             result = cursor.fetchone()
             
             if not result:
                 # If the songUri is not found, insert the new song information
                 insert_song_query = """
-                INSERT INTO SONGINFO (songUri, songName, artistName, albumName, songLengthMs)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO SONGDATA (songuri, songname, artistname, albumname, songlengthms)
+                VALUES (%s, %s, %s, %s, %s)
                 """
                 song_name = item['track']['name']
                 artist_name = ', '.join([artist['name'] for artist in item['track']['artists']])
                 album_name = item['track']['album']['name']
                 song_length_ms = item['track']['duration_ms']  # Get the song length in milliseconds
                 
-                cursor.execute(insert_song_query, (song_data['songUri'], song_name, artist_name, album_name, song_length_ms))
+                cursor.execute(insert_song_query, (song_data['songuri'], song_name, artist_name, album_name, song_length_ms))
                 conn.commit()
 
             # Check for unique listeningStartTime before adding to all_songs
-            if song_data['listeningStartTime'] not in [s['listeningStartTime'] for s in all_songs]:
+            if song_data['listeningstarttime'] not in [s['listeningstarttime'] for s in all_songs]:
                 all_songs.append(song_data)
 
         # Check if we have reached the end of the available data
@@ -255,7 +291,7 @@ def getSpotifyHistoricalData(userUri, historicalData, access_token):
 
     # Convert the list of song data to a DataFrame
     spotifyHistoricalData = pd.DataFrame(all_songs)
-    spotifyHistoricalData["userUri"] = userUri
+    spotifyHistoricalData["useruri"] = userUri
     return spotifyHistoricalData
 
 def insertSpotifyHistoricalData(spotifyHistoricalData):
@@ -266,7 +302,7 @@ def insertSpotifyHistoricalData(spotifyHistoricalData):
         return
 
     # Ensure the DataFrame has all required columns
-    required_columns = ['userUri', 'playlistUri', 'songUri', 'percentageListened', 'percentageSkipped', 'listeningStartTime']
+    required_columns = ['useruri', 'playlisturi', 'songuri', 'percentlistened', 'percentskipped', 'listeningstarttime']
     spotifyHistoricalData = spotifyHistoricalData[required_columns]
 
     # Convert DataFrame to a list of tuples
@@ -274,15 +310,15 @@ def insertSpotifyHistoricalData(spotifyHistoricalData):
 
     # Insert into LISTENERDATA table
     insert_listener_data_query = """
-    INSERT INTO LISTENERDATA (userUri, playlistUri, songUri, percentageListened, percentageSkipped, listeningStartTime)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO LISTENERDATA (useruri, playlisturi, songuri, percentlistened, percentskipped, listeningstarttime)
+    VALUES (%s, %s, %s, %s, %s, %s);
     """
 
     for record in data_to_insert:
         # Check if the record already exists
         check_existing_query = """
         SELECT COUNT(*) FROM LISTENERDATA 
-        WHERE userUri = ? AND playlistUri = ? AND songUri = ? AND listeningStartTime = ?
+        WHERE useruri = %s AND playlisturi = %s AND songuri = %s AND listeningstarttime = %s;
         """
         cursor.execute(check_existing_query, (record[0], record[1], record[2], record[5]))
         exists = cursor.fetchone()[0]
@@ -296,13 +332,15 @@ def insertSpotifyHistoricalData(spotifyHistoricalData):
 
 def getLastHistoricalData(user_uri):
     # Modify the query to convert datetimeoffset to datetime
+
     query = """
-    SELECT TOP 1 
-        userUri, playlistUri, songUri, percentageListened, percentageSkipped, 
-        CAST(listeningStartTime AS datetime) AS listeningStartTime 
+    SELECT 
+        useruri, playlisturi, songuri, percentlistened, percentskipped, 
+        CAST(listeningstarttime AS TIMESTAMP) AS listeningstarttime 
     FROM LISTENERDATA 
-    WHERE userUri = ? 
-    ORDER BY listeningStartTime DESC
+    WHERE useruri = %s 
+    ORDER BY listeningstarttime DESC 
+    LIMIT 1;
     """
     cursor.execute(query, (user_uri,))
     result = cursor.fetchone()
@@ -316,7 +354,7 @@ def getLastHistoricalData(user_uri):
         result[5] = listening_start_time  # Update the listeningStartTime
         
         # Create a DataFrame from the result
-        return pd.DataFrame([result], columns=['userUri', 'playlistUri', 'songUri', 'percentageListened', 'percentageSkipped', 'listeningStartTime'])
+        return pd.DataFrame([result], columns=['useruri', 'playlisturi', 'songuri', 'percentlistened', 'percentskipped', 'listeningstarttime'])
 
     return pd.DataFrame()  # Return empty DataFrame if no result
 
