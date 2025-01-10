@@ -88,26 +88,27 @@ def connect_to_db_postgres():
                 remote_bind_address=(postgres_hostname, postgres_host_port)
         )
         post_server.start()
-    except:
-        st.warning("Error connecting to database via SSH, please refresh the page")
 
 
-    try:
-        conn = psycopg2.connect(
-            dbname=postgres_database,
-            user=postgres_username,
-            password=postgres_password,
-            host="localhost",
-            port=post_server.local_bind_port,
-            sslmode="disable",
-        )
-        
-        cursor = conn.cursor()
+
+        try:
+            conn = psycopg2.connect(
+                dbname=postgres_database,
+                user=postgres_username,
+                password=postgres_password,
+                host="localhost",
+                port=post_server.local_bind_port,
+                sslmode="disable",
+            )
             
-        return conn, cursor
+            cursor = conn.cursor()
+                
+            return conn, cursor
+        except:
+            st.warning("Error connecting to database, please refresh the page")
 
     except:
-        st.write("Error connecting to the database, please refresh")
+        st.write("Error connecting to the database via SSH, please refresh")
         return "", ""
 
 conn, cursor = connect_to_db_postgres()
