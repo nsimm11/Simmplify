@@ -756,7 +756,25 @@ def clearFromSpotify(toBeClearedDf):
         clearFromSpotifyPlaylist(playlistUri, toBeClearedDf[toBeClearedDf["playlisturi"] == playlistUri])
         clearFromDatabase(playlistUri, toBeClearedDf[toBeClearedDf["playlisturi"] == playlistUri])
 
+def removeUser():
 
+    # Get the user's URI
+    userUri = st.session_state["UserUri"]
+
+    # Delete the user's data from the database
+    cursor.execute("DELETE FROM USERS WHERE useruri = %s", (userUri,))
+    cursor.execute("DELETE FROM USERTOKENS WHERE useruri = %s", (userUri,))
+    conn.commit()
+
+    # Clear the session state
+    st.session_state["access_token"] = ""
+    st.session_state["access_token_endTime"] = ""
+    st.session_state["refresh_token"] = ""
+    st.session_state["UserUri"] = ""
+    st.session_state["UserDbId"] = ""
+    st.session_state["UserName"] = ""
+
+    st.rerun()
 
 query_params = st.query_params  # Use st.query_params directly
 code = query_params.get("code")  # Get the code directly
@@ -1000,6 +1018,31 @@ else:
         with bm3:   
             display_stats(bottomPlaylists, "Most Skipped Playlists", "Playlist", display_percentage='skipped')
 
+    st.markdown(""" 
+        <div style="text-align: center" padding: 10px;>
+        </div>
+    """, unsafe_allow_html=True) 
+
+    # Inject custom CSS to style the expander, expander should have the spotify green border
+    custom_css = """
+    <style>
+        .stExpander {
+            border: 1px solid #1DB954 !important; /* Thicker green border */
+            border-radius: 8px; /* Optional: adjust border radius */
+            box-shadow: none !important; /* Remove any shadows */
+            text-align: cemter; /* Align text to the left */
+        }
+    </style>
+    """
+
+    # Inject CSS using st.markdown
+    st.markdown(custom_css, unsafe_allow_html=True)
+
+    with st.expander("Stop Tracking"):
+        stopTracking = st.button("Stop Tracking")
+        if stopTracking:
+            removeUser()
+    
 
     userCurrentSongPlayingDict = {}
 
