@@ -93,16 +93,15 @@ def connect_to_db_postgres():
 
 
     try:
-        connection = psycopg2.connect(
+        conn = psycopg2.connect(
+            dbname=postgres_database,
             user=postgres_username,
             password=postgres_password,
-            host='localhost',
+            host="localhost",
             port=post_server.local_bind_port,
-            database=postgres_database,
-            options="-c tcp_keepalives_idle=60 -c tcp_keepalives_interval=30 -c tcp_keepalives_count=10",
-            sslmode="disable"
+            sslmode="disable",
         )
-        conn = connect_to_db_postgres()
+        
         cursor = conn.cursor()
             
         return conn, cursor
