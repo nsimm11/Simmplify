@@ -110,11 +110,11 @@ def connect_to_db_postgres():
             cursor = conn.cursor()
                 
             return conn, cursor
-        except:
-            st.warning("Error connecting to database, please refresh the page")
+        except Exception as error:
+            st.warning("An exception occurred:", error)
 
-    except:
-        st.write("Error connecting to the database via SSH, please refresh")
+    except Exception as error:
+        st.write("An exception occurred:", error)
         return "", ""
 
 if (st.session_state['cursor'] == None or st.session_state['cursor'] == "") and (st.session_state['conn'] == None or st.session_state['conn'] == ""):
