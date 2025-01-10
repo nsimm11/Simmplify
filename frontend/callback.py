@@ -78,8 +78,6 @@ def connect_to_db_postgres():
         temp_key_file.write(ssh_private_key)
         temp_key_path = temp_key_file.name
 
-    st.write(postgres_database,postgres_username,postgres_password)
-
     try:
 
         # Establish SSH tunnel and connect to PostgreSQL
