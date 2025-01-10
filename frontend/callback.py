@@ -849,6 +849,8 @@ else:
     """, unsafe_allow_html=True)
 
     cursor = st.session_state["cursor"]
+    conn = st.session_state["conn"]
+
 
     # Call the login function at the start of the script
     login()
