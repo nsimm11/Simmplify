@@ -89,7 +89,7 @@ def connect_to_db_postgres():
         )
         post_server.start()
 
-
+        st.write(postgres_database,postgres_username,postgres_password)
 
         try:
             conn = psycopg2.connect(
