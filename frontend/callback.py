@@ -149,9 +149,9 @@ def getQuery(query, params=None):
     if params is None:
         params = []
     try:
-        cursor.execute(query, params)
+        st.session_state["cursor"].execute(query, params)
         Data = pd.DataFrame.from_records(
-            cursor.fetchall(), 
+            st.session_state["cursor"].fetchall(), 
             columns=[col.name for col in cursor.description]
         )
         return Data
