@@ -52,6 +52,12 @@ if 'UserDbId' not in st.session_state:
     st.session_state['UserDbId'] = ''
 if 'previous_song_name' not in st.session_state:
     st.session_state['previous_song_name'] = None
+if 'conn' not in st.session_state:
+    st.session_state['conn'] = None
+if 'cursor' not in st.session_state:
+    st.session_state['cursor'] = None
+
+
 
 # Scopes required for accessing user's currently playing track
 SCOPE = "user-read-playback-state user-read-currently-playing user-read-recently-played playlist-modify-private playlist-modify-public"
@@ -111,10 +117,13 @@ def connect_to_db_postgres():
         st.write("Error connecting to the database via SSH, please refresh")
         return "", ""
 
-conn, cursor = connect_to_db_postgres()
+if st.session_state['cursor'] == None and st.session_state['conn'] == None:
+    st.session_state['conn'], st.session_state['cursor'] = connect_to_db_postgres()
+    conn = st.session_state["conn"]
+    cursor = st.session_state["cursor"]
 
-if conn == "" and cursor == "":
-    st.stop()
+    if conn == "" and cursor == "":
+        st.stop()
 
 def hide_streamlit_style():
     hide_style = """
