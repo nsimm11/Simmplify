@@ -509,11 +509,11 @@ def getSummarizedData(historicalData):
 def highlight_row(row):
     score = row['Preference Score']
     if score > 0:
-        return [f'background-color: rgba(0, 255, 0, 0.75); color: black'] * len(row)
+        return [f'background-color: rgba(0, 255, 25, 0.5); color: black'] * len(row)
     elif score > -300:
-        return [f'background-color: rgba(255, 255, 0, 0.75); color: black'] * len(row)  # Slightly darker yellow
+        return [f'background-color: rgba(255, 255, 25, 0.5); color: black'] * len(row)  # Slightly darker yellow
     else:
-        return [f'background-color: rgba(255, 0, 0, 0.75); color: black'] * len(row)
+        return [f'background-color: rgba(255, 0, 25, 0.5); color: black'] * len(row)
 
 def filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax):
     if selectedPlaylistUri is not None:
