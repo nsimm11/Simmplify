@@ -138,8 +138,14 @@ def get_current_playback_data(access_token):
 # Function to process playback data and calculate percentage listened
 def process_playback_data(previous_playback, current_playback, user_uri):
     if previous_playback and current_playback:
-        previous_track_id = previous_playback['item']['id']
-        current_track_id = current_playback['item']['id']
+        if "item" in previous_playback and previous_playback["item"] and "id" in previous_playback["item"]:
+            previous_track_id = previous_playback['item']['id']
+        else:
+            return False
+        if "item" in current_playback and current_playback["item"] and "id" in current_playback["item"]:
+            current_track_id = current_playback['item']['id']
+        else:
+            return False
         
         if previous_track_id != current_track_id:
             print(f"New track detected: {current_track_id}")
