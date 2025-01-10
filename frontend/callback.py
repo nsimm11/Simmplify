@@ -1026,6 +1026,7 @@ else:
             userCurrentSongPlayingDict["SongCurrentPosition"] = 1
             userCurrentSongPlayingDict["duration_ms"] = 1
             userCurrentSongPlayingDict["SongCurrentPosition"] = 1
+            userCurrentSongPlayingDict["name"] = ""
 
         else:
             userCurrentSongPlayingDict["SongCurrentPosition"] = min(float(userCurrentSongPlayingDict["duration_ms"]), float(userCurrentSongPlayingDict["SongCurrentPosition"]) + 1000)

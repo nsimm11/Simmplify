@@ -86,7 +86,7 @@ def refresh_access_tokens():
 
             # Check if the access token is about to expire (e.g., within the next 5 minutes)
             current_time_utc = datetime.now(pytz.utc)
-            if access_token_end_time - current_time_utc < timedelta(minutes=5):
+            if access_token_end_time - current_time_utc < timedelta(minutes=1):
                 print(f"Refreshing token for user {db_id}")
                 # Refresh the access token using the existing sp_oauth object
                 token_info = sp_oauth.refresh_access_token(refresh_token)
