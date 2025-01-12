@@ -112,6 +112,7 @@ def connect_to_db_postgres():
             return conn, cursor
         except Exception as error:
             st.warning(f"An exception occurred: {error}")
+            return "",""
 
     except Exception as error:
         st.write("An exception occurred:", error)
