@@ -678,56 +678,41 @@ def get_NoahImage():
 
 # Function to display statistics for artists or songs
 def display_stats(column, title, statType, display_percentage):
+    st.markdown("""
+                <style>
+                    .center-text {
+                        text-align: center;
+                        }
+                </style>""", unsafe_allow_html=True)
     st.markdown(f"<h4 style='color: #1DB954; text-align: center;'>{title}</h4>", unsafe_allow_html=True)
     count = 1
     if len(column) > 0:
         for index, item in column.iterrows():
-            # Adjust column sizes: rank, name, image, and percentage
-            cols = st.columns([0.5, 1.5, 1, 1])
-
-            # Display rank
-            with cols[0]:
-                st.markdown(
-                    f"<div class='center-text'><span style='font-size: 2em; font-weight: bold; color: rgba(255, 255, 255, 0.8);'>{count}</span></div>",
-                    unsafe_allow_html=True,
-                )
-
-            # Display artist or song name
-            with cols[1]:
-                if statType == "Artist":
-                    st.markdown(f"**{item['Artist Name']}**")
-                elif statType == "Song":
-                    st.markdown(f"**{item['Song Name']}** by **{item['Artist Name']}**")
-                elif statType == "Playlist":
-                    st.markdown(f"**{userPlaylists[userPlaylists['uri'] == item['playlisturi']]['name'].values[0] if item['playlisturi'] in userPlaylists['uri'].values else 'Non-User Playlist'}**")
-
-            # Display artist image or album cover
-            with cols[2]:
-                if statType == "Artist":
-                    artist_image_url = get_artist_image_url(item["Artist Name"])
-                    st.markdown(f"<img src='{artist_image_url}' width='80' height='80' style='border-radius: 50%; object-fit: cover; object-position: 50% 50%; padding: 5px;'>", unsafe_allow_html=True)
-                elif statType == "Song":
-                    album_cover_url = get_album_cover_url(item["Song Name"])
-                    st.markdown(f"<img src='{album_cover_url}' width='80' height='80' style='object-fit: cover; padding: 5px;'>", unsafe_allow_html=True)
-
-                elif statType == "Playlist":
-                    playlist_image_url = get_playlist_image_url(item.playlisturi)
-                    st.markdown(f"<img src='{playlist_image_url}' width='80' height='80' style='object-fit: cover; padding: 5px;'>", unsafe_allow_html=True)
-
-            # Display percentage listened or skipped
-            with cols[3]:
-                percentage = (
-                    f"{item['Preference Score']}%" if display_percentage == 'listened' else f"{item['Preference Score']}%"
-                )
-                label = "Score" if display_percentage == 'listened' else "Score"
-                st.markdown(
-                    f"<div class='center-text'><p><strong>{label}:</strong> {percentage}</p></div>",
-                    unsafe_allow_html=True,
-                )
-
+            # Determine if it's the last row
+            is_last_row = count == len(column)
+            border_style = "none" if is_last_row else "1px solid #ddd"
+            
+            # Create a row for each item using HTML and CSS
+            row_html = f"""
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: {border_style};">
+                <div style="flex: 0.5; text-align: center;">
+                    <span style="font-size: 2em; font-weight: bold; color: rgba(255, 255, 255, 0.8);">{count}</span>
+                </div>
+                <div style="flex: 1.5; text-align: center;">
+                    {item['Artist Name'] if statType == 'Artist' else f"{item['Song Name']} by {item['Artist Name']}" if statType == 'Song' else userPlaylists[userPlaylists['uri'] == item['playlisturi']]['name'].values[0] if item['playlisturi'] in userPlaylists['uri'].values else 'Non-User Playlist'}
+                </div>
+                <div style="flex: 1; text-align: center;">
+                    <img src="{get_artist_image_url(item['Artist Name']) if statType == 'Artist' else get_album_cover_url(item['Song Name']) if statType == 'Song' else get_playlist_image_url(item.playlisturi)}" width="80" height="80" style="border-radius: 50%; object-fit: cover; object-position: 50% 50%; padding: 5px;">
+                </div>
+                <div style="flex: 1; text-align: center;">
+                    <p><strong>Score:</strong> {item['Preference Score']}%</p>
+                </div>
+            </div>
+            """
+            st.markdown(row_html, unsafe_allow_html=True)
             count += 1
     else:
-        st.markdown(f"<div style='color: #FFFFFF; text-align: center;'>No songs yet! Start listening and come back soon!</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='center-text' style='color: #FFFFFF; text-align: center;'>No songs yet! Start listening and come back soon!</div>", unsafe_allow_html=True)
 
 def clearFromSpotifyPlaylist(playlistUri, songUris):
     # Extract the playlist ID from the URI

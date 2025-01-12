@@ -56,7 +56,7 @@ def connect_to_db_postgres():
         user=postgres_username,
         password=postgres_password,
         host="localhost",
-        port=server.local_bind_port,
+        #port=server.local_bind_port,
         sslmode="disable",
     )
         
