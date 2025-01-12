@@ -741,7 +741,10 @@ def display_stats(column, title, statType, display_percentage):
     if statType == "Artist" or statType == "Song":
         st.markdown(f"<div style='color: #FFFFFF; text-align: center;'><strong>Metric: Total Score</strong></div>", unsafe_allow_html=True)
     else:
-        st.markdown(f"<div style='color: #FFFFFF; text-align: center;'><strong>Metric: Average Percent Listened</strong></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='color: #FFFFFF; text-align: center;'>
+                        <strong>Metric: Average Percent Listened</strong>
+                        <hr style='border-top: 1px solid #FFFFFF;'>
+                    </div>", unsafe_allow_html=True)
     count = 1
     if len(column) > 0:
         for index, item in column.iterrows():
