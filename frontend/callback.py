@@ -238,7 +238,6 @@ def login():
 
     if query_params_user != None:
         #Pull refresh token from database using username from query params in usertokens
-        st.toast("Authenticating with user information from query parameters")
         getRefreshTokenFromUserUri(query_params_user)
 
     if st.session_state['access_token'] != '' and st.session_state["access_token_endTime"] != '' and st.session_state["refresh_token"] != '':
@@ -741,10 +740,10 @@ def display_stats(column, title, statType, display_percentage):
     if statType == "Artist" or statType == "Song":
         st.markdown(f"<div style='color: #FFFFFF; text-align: center;'><strong>Metric: Total Score</strong></div>", unsafe_allow_html=True)
     else:
-        st.markdown(f"<div style='color: #FFFFFF; text-align: center;'>
+        st.markdown(f"""<div style='color: #FFFFFF; text-align: center;'>
                         <strong>Metric: Average Percent Listened</strong>
                         <hr style='border-top: 1px solid #FFFFFF;'>
-                    </div>", unsafe_allow_html=True)
+                    </div>""", unsafe_allow_html=True)
     count = 1
     if len(column) > 0:
         for index, item in column.iterrows():
