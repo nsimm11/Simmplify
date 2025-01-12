@@ -225,7 +225,21 @@ def getUserId(userUri):
 
         return newUserId
 
+def getRefreshTokenFromUserUri(userUri):
+    userTokens = getQuery("SELECT * FROM USERTOKENS WHERE useruri = %s", [userUri])
+    if len(userTokens) > 0:
+        st.session_state['access_token'] = userTokens.iloc[0]['accesstoken']
+        st.session_state["access_token_endTime"] = pd.to_datetime(userTokens.iloc[0]['accesstokenendtime'])
+        st.session_state["refresh_token"] = userTokens.iloc[0]['refreshtoken']
+    else:
+        return None
+
 def login():
+
+    if query_params_user != None:
+        #Pull refresh token from database using username from query params in usertokens
+        st.toast("Authenticating with user information from query parameters")
+        getRefreshTokenFromUserUri(query_params_user)
 
     if st.session_state['access_token'] != '' and st.session_state["access_token_endTime"] != '' and st.session_state["refresh_token"] != '':
         st.toast("You are already logged in!")
@@ -242,6 +256,11 @@ def login():
 
     else:
         st.warning("Authorization code not found in URL. Please try again.")
+
+def addUsernametoQueryParams(username):
+    query_params = st.query_params
+    query_params["username"] = username
+    st.query_params = query_params
 
 def exchange_code_for_token(auth_code):
     token_url = "https://accounts.spotify.com/api/token"
@@ -280,6 +299,8 @@ def getUserInfo():
         st.session_state["UserName"] = str(requestsAsJsonUser["display_name"])
         st.session_state["UserUri"] = userUri
         st.session_state["UserId"] = str(requestsAsJsonUser["id"])
+
+        addUsernametoQueryParams(st.session_state["UserUri"])
 
         return st.session_state["UserName"], st.session_state["UserUri"], st.session_state["UserId"]
 
@@ -524,7 +545,9 @@ def highlight_row(row):
     score = row['Preference Score']
     if score >= 100:
         color = plt.cm.RdYlGn(0.99)
-    elif score <= -300:
+    elif score < -100:
+        color = plt.cm.RdYlGn(0.25)
+    elif score < -300:
         color = plt.cm.RdYlGn(0)
     else:
         normalized_score = (score + 300) / 400  # Normalize to [0, 1]
@@ -562,33 +585,38 @@ def create_summarized_data_for_artists(summarizedDataForArtists):
 
     return summarizedDataForArtists
 
+# Function to remove 'spotify:track:' prefix if present
+def remove_spotify_track_prefix(uri):
+    return uri.replace('spotify:track:', '')
+
+
 def summarizedAdvancedStats(summarizedData):
 
     summarizedDataForArtists = create_summarized_data_for_artists(summarizedData.copy())
 
+    # Apply the function to the 'songuri' column
+    summarizedData['songuri'] = summarizedData['songuri'].apply(remove_spotify_track_prefix)
+    
+    # Apply the function to the 'songuri' column
+    summarizedData['songuri'] = summarizedData['songuri'].apply(remove_spotify_track_prefix)
+
     bottomArtists = summarizedDataForArtists.groupby('Artist Name').agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=True).head(5)
     
     bottomSongs = summarizedData.groupby(['Song Name', 'Artist Name']).agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=True).head(5)
-
-    bottomPlaylists = summarizedData.groupby('playlisturi').agg({
-        'Preference Score': 'sum',
-        'Play Count': 'sum'
-    }).reset_index()
-
-    bottomPlaylists['Preference Rate'] = bottomPlaylists['Preference Score'] / bottomPlaylists['Play Count']
-    bottomPlaylists = bottomPlaylists.sort_values(by='Preference Rate', ascending=True).head(5)
     
     topSongs = summarizedData.groupby(['Song Name', 'Artist Name']).agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=False).head(5)
     
     topArtists = summarizedDataForArtists.groupby('Artist Name').agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=False).head(5)
 
-    topPlaylists = summarizedData.groupby('playlisturi').agg({
+    playlistRankings = summarizedData.groupby(['Playlist Name', 'playlisturi']).agg({
         'Preference Score': 'sum',
         'Play Count': 'sum'
     }).reset_index()
 
-    topPlaylists['Preference Rate'] = topPlaylists['Preference Score'] / topPlaylists['Play Count']
-    topPlaylists = topPlaylists.sort_values(by='Preference Rate', ascending=False).head(5)
+    playlistRankings['Preference Rate'] = ((playlistRankings['Preference Score'] / playlistRankings['Play Count'] + 100) / 200) * 100
+    playlistRankings = playlistRankings.sort_values(by='Preference Rate', ascending=False)
+    topPlaylists = playlistRankings.head(5)
+    bottomPlaylists = playlistRankings.tail(5).sort_values(by='Preference Rate', ascending=True)
 
     return topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists
 
@@ -710,6 +738,10 @@ def display_stats(column, title, statType, display_percentage):
                         }
                 </style>""", unsafe_allow_html=True)
     st.markdown(f"<h4 style='color: #1DB954; text-align: center;'>{title}</h4>", unsafe_allow_html=True)
+    if statType == "Artist" or statType == "Song":
+        st.markdown(f"<div style='color: #FFFFFF; text-align: center;'><strong>Metric: Total Score</strong></div>", unsafe_allow_html=True)
+    else:
+        st.markdown(f"<div style='color: #FFFFFF; text-align: center;'><strong>Metric: Average Percent Listened</strong></div>", unsafe_allow_html=True)
     count = 1
     if len(column) > 0:
         for index, item in column.iterrows():
@@ -730,7 +762,7 @@ def display_stats(column, title, statType, display_percentage):
                     <img src="{get_artist_image_url(item['Artist Name']) if statType == 'Artist' else get_album_cover_url(item['Song Name']) if statType == 'Song' else get_playlist_image_url(item.playlisturi)}" width="80" height="80" style="border-radius: 50%; object-fit: cover; object-position: 50% 50%; padding: 5px;">
                 </div>
                 <div style="flex: 1; text-align: center;">
-                    <p><strong>Score:</strong> {item['Preference Score'] if statType == "Artist" or statType == "Song" else np.round(item['Preference Rate'],2)}%</p>
+                    <p> {item['Preference Score'] if statType == "Artist" or statType == "Song" else np.round(item['Preference Rate'],2)}%</p>
                 </div>
             </div>
             """
@@ -794,9 +826,13 @@ def removeUser():
     st.rerun()
 
 query_params = st.query_params  # Use st.query_params directly
+if "username" in query_params:
+    query_params_user = query_params.get("username")
+else:
+    query_params_user = None
 code = query_params.get("code")  # Get the code directly
 
-if code == None and st.session_state['auth_code'] == None:
+if code == None and st.session_state['auth_code'] == None and query_params_user == None:
     st.markdown(
         
             """
@@ -941,15 +977,15 @@ else:
     simmplify = st.empty()
 
 
-    cb1, cb2, cb3, cb4 = st.columns([2,2,2,8])
+    cb1, cb2, cb3, cb4 = st.columns([4,4,4,6])
 
-    with cb1.expander("Clear Yellow Songs"):
-        yellow_songs = len(filteredSummarizedData[filteredSummarizedData["Preference Score"] < 0])
-        st.warning(f"This will remove {yellow_songs} songs from Playlist: {selectedPlaylistName}.")
+    with cb1.expander("Remove Orange Songs (Score < -100)"):
+        orange_songs = len(filteredSummarizedData[filteredSummarizedData["Preference Score"] < -100])
+        st.warning(f"This will remove {orange_songs} songs which have a score less than -100 from Playlist: {selectedPlaylistName}.")
         clearYellowSongsButton = st.button("Clear Yellow Songs")
         if clearYellowSongsButton:
             clearFromSpotify(filteredSummarizedData[filteredSummarizedData["Preference Score"] < 0])
-    with cb2.expander("Clear Red Songs"):
+    with cb2.expander("Remove Red Songs (Score < -300)"):
         red_songs = len(filteredSummarizedData[filteredSummarizedData["Preference Score"] < -300])
         st.warning(f"This will remove {red_songs} songs from Playlist: {selectedPlaylistName}.")
         clearRedSongsButton = st.button("Clear Red Songs")
