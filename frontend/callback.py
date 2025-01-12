@@ -53,9 +53,11 @@ if 'UserDbId' not in st.session_state:
 if 'previous_song_name' not in st.session_state:
     st.session_state['previous_song_name'] = None
 if 'conn' not in st.session_state:
-    st.session_state['conn'] = None
+    st.session_state['conn'] = ""
 if 'cursor' not in st.session_state:
-    st.session_state['cursor'] = None
+    st.session_state['cursor'] = ""
+if 'server' not in st.session_state:
+    st.session_state['server'] = None
 
 
 
@@ -84,46 +86,56 @@ def connect_to_db_postgres():
         temp_key_file.write(ssh_private_key)
         temp_key_path = temp_key_file.name
 
-    try:
-
-        # Establish SSH tunnel and connect to PostgreSQL
-        post_server = sshtunnel.SSHTunnelForwarder(
+    max_retries = 5  # Number of retry attempts
+    retry_delay = 2  # Delay between retries (seconds)
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            # Establish SSH tunnel
+            post_server = sshtunnel.SSHTunnelForwarder(
                 ssh_address_or_host=('ssh.pythonanywhere.com', 22),
                 ssh_username=ssh_username,
                 ssh_pkey=temp_key_path,
                 ssh_private_key_password=ssh_private_key_passphrase,
                 remote_bind_address=(postgres_hostname, postgres_host_port)
-        )
-        post_server.start()
-
-
-        try:
-            conn = psycopg2.connect(
-                dbname=postgres_database,
-                user=postgres_username,
-                password=postgres_password,
-                host="localhost",
-                port=post_server.local_bind_port,
-                sslmode="disable",
             )
-            
-            cursor = conn.cursor()
-                
-            return conn, cursor
-        except Exception as error:
-            st.warning(f"An exception occurred: {error}")
-            return "",""
+            post_server.start()
 
-    except Exception as error:
-        st.write("An exception occurred:", error)
-        return "", ""
+            try:
+                # Connect to PostgreSQL
+                conn = psycopg2.connect(
+                    dbname=postgres_database,
+                    user=postgres_username,
+                    password=postgres_password,
+                    host="localhost",
+                    port=post_server.local_bind_port,
+                    sslmode="disable",
+                )
+
+                cursor = conn.cursor()
+                return conn, cursor, post_server  # Return the SSH tunnel as well for later cleanup
+            except Exception as db_error:
+                st.warning(f"Database connection failed: {db_error}")
+
+        except Exception as ssh_error:
+            st.warning(f"SSH tunnel setup failed (attempt {attempt}/{max_retries}): {ssh_error}")
+            if attempt < max_retries:
+                time.sleep(retry_delay)  # Wait before retrying
+            else:
+                st.error("Failed to establish SSH tunnel after multiple attempts.")
+        
+    post_server.stop()  # Ensure the tunnel is stopped if DB connection fails
+    return "", "", None
+
 
 if (st.session_state['cursor'] == None or st.session_state['cursor'] == "") and (st.session_state['conn'] == None or st.session_state['conn'] == ""):
-    st.session_state['conn'], st.session_state['cursor'] = connect_to_db_postgres()
+    st.session_state['conn'], st.session_state['cursor'], st.session_state["server"] = connect_to_db_postgres()
     conn = st.session_state["conn"]
     cursor = st.session_state["cursor"]
+    server = st.session_state["server"]
 
-    if conn == "" and cursor == "":
+    if conn == "" and cursor == "" and server == None:
+        st.write("Error connecting to server. Please refresh the page to try again.")
         st.stop()
 
 def hide_streamlit_style():
@@ -558,13 +570,25 @@ def summarizedAdvancedStats(summarizedData):
     
     bottomSongs = summarizedData.groupby(['Song Name', 'Artist Name']).agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=True).head(5)
 
-    bottomPlaylists = summarizedData.groupby('playlisturi').agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=True).head(5)
+    bottomPlaylists = summarizedData.groupby('playlisturi').agg({
+        'Preference Score': 'sum',
+        'Play Count': 'sum'
+    }).reset_index()
+
+    bottomPlaylists['Preference Rate'] = bottomPlaylists['Preference Score'] / bottomPlaylists['Play Count']
+    bottomPlaylists = bottomPlaylists.sort_values(by='Preference Rate', ascending=True).head(5)
     
     topSongs = summarizedData.groupby(['Song Name', 'Artist Name']).agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=False).head(5)
     
     topArtists = summarizedDataForArtists.groupby('Artist Name').agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=False).head(5)
 
-    topPlaylists = summarizedData.groupby('playlisturi').agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=False).head(5)
+    topPlaylists = summarizedData.groupby('playlisturi').agg({
+        'Preference Score': 'sum',
+        'Play Count': 'sum'
+    }).reset_index()
+
+    topPlaylists['Preference Rate'] = topPlaylists['Preference Score'] / topPlaylists['Play Count']
+    topPlaylists = topPlaylists.sort_values(by='Preference Rate', ascending=False).head(5)
 
     return topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists
 
@@ -706,7 +730,7 @@ def display_stats(column, title, statType, display_percentage):
                     <img src="{get_artist_image_url(item['Artist Name']) if statType == 'Artist' else get_album_cover_url(item['Song Name']) if statType == 'Song' else get_playlist_image_url(item.playlisturi)}" width="80" height="80" style="border-radius: 50%; object-fit: cover; object-position: 50% 50%; padding: 5px;">
                 </div>
                 <div style="flex: 1; text-align: center;">
-                    <p><strong>Score:</strong> {item['Preference Score']}%</p>
+                    <p><strong>Score:</strong> {item['Preference Score'] if statType == "Artist" or statType == "Song" else np.round(item['Preference Rate'],2)}%</p>
                 </div>
             </div>
             """
