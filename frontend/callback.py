@@ -115,7 +115,8 @@ def connect_to_db_postgres():
                 cursor = conn.cursor()
                 return conn, cursor, post_server  # Return the SSH tunnel as well for later cleanup
             except Exception as db_error:
-                print(f"Database connection failed: {db_error}")
+                #print(f"Database connection failed: {db_error}")
+                print("Database connection issue")
 
         except Exception as ssh_error:
             print(f"SSH tunnel setup failed (attempt {attempt}/{max_retries}): {ssh_error}")
