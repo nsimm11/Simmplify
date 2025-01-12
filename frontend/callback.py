@@ -115,10 +115,10 @@ def connect_to_db_postgres():
                 cursor = conn.cursor()
                 return conn, cursor, post_server  # Return the SSH tunnel as well for later cleanup
             except Exception as db_error:
-                st.warning(f"Database connection failed: {db_error}")
+                print(f"Database connection failed: {db_error}")
 
         except Exception as ssh_error:
-            st.warning(f"SSH tunnel setup failed (attempt {attempt}/{max_retries}): {ssh_error}")
+            print(f"SSH tunnel setup failed (attempt {attempt}/{max_retries}): {ssh_error}")
             if attempt < max_retries:
                 time.sleep(retry_delay)  # Wait before retrying
             else:
@@ -738,25 +738,22 @@ def display_stats(column, title, statType, display_percentage):
                 </style>""", unsafe_allow_html=True)
     st.markdown(f"<h4 style='color: #1DB954; text-align: center;'>{title}</h4>", unsafe_allow_html=True)
     if statType == "Artist" or statType == "Song":
-        st.markdown(f"""<div style='color: #FFFFFF; text-align: center;'>
+        st.markdown(f"""<div style='color: #FFFFFF; text-align: center; padding: 10px;'>
                 <strong>Metric: Total Score</strong>
-                <hr style='border-top: 1px solid #FFFFFF;'>
             </div>""", unsafe_allow_html=True)
     else:
-        st.markdown(f"""<div style='color: #FFFFFF; text-align: center;'>
+        st.markdown(f"""<div style='color: #FFFFFF; text-align: center; padding: 10px;'>
                         <strong>Metric: Average Percent Listened</strong>
-                        <hr style='border-top: 1px solid #FFFFFF;'>
                     </div>""", unsafe_allow_html=True)
     count = 1
     if len(column) > 0:
         for index, item in column.iterrows():
             # Determine if it's the last row
-            is_last_row = count == len(column)
-            border_style = "none" if is_last_row else "1px solid #ddd"
+            border_style ="1px solid #ddd"
             
             # Create a row for each item using HTML and CSS
             row_html = f"""
-            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: {border_style};">
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px; border-top: {border_style};">
                 <div style="flex: 0.5; text-align: center;">
                     <span style="font-size: 2em; font-weight: bold; color: rgba(255, 255, 255, 0.8);">{count}</span>
                 </div>
