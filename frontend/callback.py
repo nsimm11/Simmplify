@@ -242,8 +242,7 @@ def login():
         getRefreshTokenFromUserUri(query_params_user)
 
     if st.session_state['access_token'] != '' and st.session_state["access_token_endTime"] != '' and st.session_state["refresh_token"] != '':
-        st.toast("You are already logged in!")
-        return
+        return True
     
     query_params = st.query_params  # Use st.query_params directly
     code = query_params.get("code")  # Get the code directly
@@ -426,9 +425,11 @@ def spotifyUsersPlaylists(username):
         userPlaylists = (json_normalize(requestsAsJsonPlaylists["items"]))[["uri", "name", "owner.display_name", "owner.id"]]
         userPlaylists = userPlaylists[(userPlaylists["owner.id"] == username) | (userPlaylists["owner.display_name"] == username)]
 
+    userPlaylists = pd.concat([userPlaylists, pd.DataFrame.from_dict({"uri": [f"spotify:user:{username}:collection"], "name": ["Liked Songs"], "owner.display_name": [username], "owner.id": [username]})])
+
     return userPlaylists
 
-def getHistoricalData(userUri):
+def getHistoricalData(userUri, userPlaylists):
 
     # Join with SONGDATA table to get song details
     historicalDataQuery = """
@@ -456,6 +457,9 @@ def getHistoricalData(userUri):
         lambda x: x.replace(tzinfo=pytz.utc).astimezone(user_timezone).replace(microsecond=0)
     )
 
+    playlist_map = userPlaylists.set_index('uri')['name'].to_dict()
+    historicalData['Playlist Name'] = historicalData['playlisturi'].map(playlist_map).fillna("Non-User Playlist")
+
     return historicalData
 
 def highlight_historical_data_row(row):
@@ -469,14 +473,6 @@ def highlight_historical_data_row(row):
 
 def format_historical_data(df, playlist_name):
     # Limit to the last 150 rows since the data will become too large to display
-
-    # Add playlist name to the DataFrame
-    if playlist_name != "ALL":
-        df['Playlist Name'] = playlist_name
-    else:
-        # Fetch playlist names for each URI
-        playlist_names = userPlaylists.set_index('uri')['name'].to_dict()
-        df['Playlist Name'] = df['playlisturi'].map(playlist_names)
 
     df = df.sort_values(by='listeningstarttime', ascending=False)
     df = df.head(150)
@@ -509,9 +505,8 @@ def format_historical_data(df, playlist_name):
 
 def getSummarizedData(historicalData):
 
-    
     # Group by 'playlistUri', 'songName', 'artistName', 'albumName' and aggregate sums
-    summarizedData = historicalData.groupby(['playlisturi', 'songname', 'artistname', 'albumname', 'songuri']).agg({
+    summarizedData = historicalData.groupby(['playlisturi', 'songname', 'artistname', 'albumname', 'songuri','Playlist Name']).agg({
         'percentlistened': 'sum',
         'percentskipped': 'sum',
         'listeningstarttime': 'count'  # Count the number of times the song has been listened to in this playlist
@@ -562,9 +557,6 @@ def filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlayli
     if selectedPlaylistUri is not None:
         summarizedData = summarizedData[summarizedData['playlisturi'] == selectedPlaylistUri]
     
-    playlist_names = userPlaylists.set_index('uri')['name'].to_dict()
-    summarizedData["Playlist Name"] = summarizedData['playlisturi'].map(playlist_names)
-
     summarizedData = summarizedData[summarizedData['Play Count'] >= playMin]
     summarizedData = summarizedData[summarizedData['Preference Score'] >= scoreMin]
     summarizedData = summarizedData[summarizedData['Preference Score'] <= scoreMax]
@@ -612,6 +604,8 @@ def summarizedAdvancedStats(summarizedData):
         'Preference Score': 'sum',
         'Play Count': 'sum'
     }).reset_index()
+
+    playlistRankings = playlistRankings[playlistRankings["Playlist Name"] != "Non-User Playlist"]
 
     playlistRankings['Preference Rate'] = ((playlistRankings['Preference Score'] / playlistRankings['Play Count'] + 100) / 200) * 100
     playlistRankings = playlistRankings.sort_values(by='Preference Rate', ascending=False)
@@ -780,7 +774,7 @@ def clearFromSpotifyPlaylist(playlistUri, songUris):
     urlForRemoval = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
 
     tracksToRemove = []
-    for songUri in songUris["songUri"]:
+    for songUri in songUris["songuri"]:
         tracksToRemove.append({"uri": "spotify:track:" + songUri})
 
     print(f"Deleting from: {urlForRemoval}")
@@ -939,12 +933,12 @@ else:
     useDbId = getUserId(userUri)
     storeTokensInDatabase()
 
-    # Display historical data for all playlists
-    historicalData = getHistoricalData(userUri)
-    summarizedData = getSummarizedData(historicalData)
-
     #Get users playlists, allow user to select a playlist
     userPlaylists = spotifyUsersPlaylists(userName)
+
+    # Display historical data for all playlists
+    historicalData = getHistoricalData(userUri, userPlaylists)
+    summarizedData = getSummarizedData(historicalData)
 
     # Add the "Liked Songs" playlist to the DataFrame
     liked_songs = pd.DataFrame({'uri': [f'spotify:user:{userName}:collection'], 'name': ['Liked Songs'], 'owner.display_name': [userName], 'owner.id': [userId]})
@@ -972,7 +966,7 @@ else:
 
     st.session_state['SelectedPlaylist'] = selectedPlaylistUri
 
-    summarizedListeningData, lengthPostFilter, filteredSummarizedData = filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
+    summarizedListeningData, lengthPostFilter, filteredSummarizedData = filterAndStyleSummarizedData(summarizedData.copy(), selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
     topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists = summarizedAdvancedStats(summarizedData)
 
     historicalDataStyled = format_historical_data(historicalData, selectedPlaylistName)    
@@ -983,17 +977,17 @@ else:
     cb1, cb2, cb3, cb4 = st.columns([4,4,4,6])
 
     with cb1.expander("Remove Orange Songs (Score < -100)"):
-        orange_songs = len(filteredSummarizedData[filteredSummarizedData["Preference Score"] < -100])
-        st.warning(f"This will remove {orange_songs} songs which have a score less than -100 from Playlist: {selectedPlaylistName}.")
+        orange_songs = filteredSummarizedData[filteredSummarizedData["Preference Score"] < -100]
+        st.warning(f"This will remove {len(orange_songs)} songs which have a score less than -100 from Playlist: {selectedPlaylistName}.")
         clearYellowSongsButton = st.button("Clear Yellow Songs")
         if clearYellowSongsButton:
-            clearFromSpotify(filteredSummarizedData[filteredSummarizedData["Preference Score"] < 0])
+            clearFromSpotify(orange_songs)
     with cb2.expander("Remove Red Songs (Score < -300)"):
-        red_songs = len(filteredSummarizedData[filteredSummarizedData["Preference Score"] < -300])
-        st.warning(f"This will remove {red_songs} songs from Playlist: {selectedPlaylistName}.")
+        red_songs = filteredSummarizedData[filteredSummarizedData["Preference Score"] < -300]
+        st.warning(f"This will remove {len(red_songs)} songs from Playlist: {selectedPlaylistName}.")
         clearRedSongsButton = st.button("Clear Red Songs")
         if clearRedSongsButton:
-            clearFromSpotify(filteredSummarizedData[filteredSummarizedData["Preference Score"] < -300])
+            clearFromSpotify(red_songs)
     with cb3.expander("Clear Filtered Songs"):
         st.warning(f"This will remove {lengthPostFilter} songs from Playlist: {selectedPlaylistName}.")
         filteredSongsButton = st.button("Clear Filtered Songs")
@@ -1123,11 +1117,14 @@ else:
                 }
 
         elif "SongCurrentPosition" not in userCurrentSongPlayingDict:
-            userCurrentSongPlayingDict["SongCurrentPosition"] = 1
-            userCurrentSongPlayingDict["duration_ms"] = 1
-            userCurrentSongPlayingDict["SongCurrentPosition"] = 1
-            userCurrentSongPlayingDict["name"] = ""
-
+                userCurrentSongPlayingDict = {
+                    "name": "No song playing",
+                    "artists": [],
+                    "album.name": "",
+                    "duration_ms": 0,
+                    "SongCurrentPosition": 0,
+                    "CurrentPlaylistUri": ""
+                }
         else:
             userCurrentSongPlayingDict["SongCurrentPosition"] = min(float(userCurrentSongPlayingDict["duration_ms"]), float(userCurrentSongPlayingDict["SongCurrentPosition"]) + 1000)
 
@@ -1138,9 +1135,9 @@ else:
             if st.session_state["is_playing"] == True:
                 if st.session_state["previous_song_name"] != userCurrentSongPlayingDict["name"]:
                     st.session_state["previous_song_name"] = userCurrentSongPlayingDict["name"]
-                    historicalData = getHistoricalData(userUri)
+                    historicalData = getHistoricalData(userUri, userPlaylists)
                     summarizedData = getSummarizedData(historicalData)
-                    summarizedListeningData, lengthPostFilter, filteredSummarizedData = filterAndStyleSummarizedData(summarizedData, selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
+                    summarizedListeningData, lengthPostFilter, filteredSummarizedData = filterAndStyleSummarizedData(summarizedData.copy(), selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
                     historicalDataStyled = format_historical_data(historicalData, selectedPlaylistName)
                     topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists = summarizedAdvancedStats(summarizedData)
 
