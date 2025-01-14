@@ -97,7 +97,8 @@ def connect_to_db_postgres():
                 ssh_username=ssh_username,
                 ssh_pkey=temp_key_path,
                 ssh_private_key_password=ssh_private_key_passphrase,
-                remote_bind_address=(postgres_hostname, postgres_host_port)
+                remote_bind_address=(postgres_hostname, postgres_host_port),
+                local_bind_address=('127.0.0.1', 43219)
             )
             post_server.start()
 
@@ -139,6 +140,7 @@ if (st.session_state['cursor'] == None or st.session_state['cursor'] == "") and 
         st.write("Error connecting to server. Please refresh the page to try again.")
         st.stop()
 
+
 def hide_streamlit_style():
     hide_style = """
     <style>
@@ -153,10 +155,12 @@ def hide_streamlit_style():
 
 hide_streamlit_style()
 
+
 def errorLog(errorMessage):
     f = open("error.txt", "a")
     f.write(f"{datetime.now()} - {errorMessage} \n")
     f.close()
+
 
 #General Query funciton, returns a dataframe. Use this instead of pd.read_sql
 def getQuery(query, params=None):
@@ -172,6 +176,7 @@ def getQuery(query, params=None):
     except psycopg2.Error as e:
         st.write(f"Error executing query: {e}")
         return pd.DataFrame()  # Return an empty DataFrame on error
+
 
 def getUserId(userUri):
     
@@ -226,6 +231,7 @@ def getUserId(userUri):
 
         return newUserId
 
+
 def getRefreshTokenFromUserUri(userUri):
     userTokens = getQuery("SELECT * FROM USERTOKENS WHERE useruri = %s", [userUri])
     if len(userTokens) > 0:
@@ -234,6 +240,7 @@ def getRefreshTokenFromUserUri(userUri):
         st.session_state["refresh_token"] = userTokens.iloc[0]['refreshtoken']
     else:
         return None
+
 
 def login():
 
@@ -256,10 +263,12 @@ def login():
     else:
         st.warning("Authorization code not found in URL. Please try again.")
 
+
 def addUsernametoQueryParams(username):
     query_params = st.query_params
     query_params["username"] = username
     st.query_params = query_params
+
 
 def exchange_code_for_token(auth_code):
     token_url = "https://accounts.spotify.com/api/token"
@@ -284,6 +293,7 @@ def exchange_code_for_token(auth_code):
         st.toast(f"You are now authenticated!, expires at {st.session_state['access_token_endTime']}")
     else:
         st.toast(f"Error fetching the token: {response.status_code} - {response.text}")
+
 
 def getUserInfo():
     try:
@@ -408,24 +418,25 @@ def spotifyUserCurrentSongPlaying():
 def extract_item(json_array, key='name'):
     return [item[key] for item in json_array if key in item]
 
-def spotifyUsersPlaylists(username):
-    params = {"limit": 50}
+def spotifyUsersPlaylists(username, userPlaylists, offset=0, limit=50):
+    params = {"limit": limit, 'offset': offset}
     requestsAsJsonPlaylists = submitRequest("https://api.spotify.com/v1/me/playlists", "Get Users History", params)
 
     if len(requestsAsJsonPlaylists["items"]) == 0:
         print("Request Empty - No Playlists")
         errorLog("Request Empty - No Playlists")
-        return None
-    
-    elif requestsAsJsonPlaylists["total"] > 50:
-        st.warning("More than 50 playlists")
-        return None
-    
-    else:
-        userPlaylists = (json_normalize(requestsAsJsonPlaylists["items"]))[["uri", "name", "owner.display_name", "owner.id"]]
-        userPlaylists = userPlaylists[(userPlaylists["owner.id"] == username) | (userPlaylists["owner.display_name"] == username)]
+        return userPlaylists
 
-    userPlaylists = pd.concat([userPlaylists, pd.DataFrame.from_dict({"uri": [f"spotify:user:{username}:collection"], "name": ["Liked Songs"], "owner.display_name": [username], "owner.id": [username]})])
+    else:
+        loopPlaylists = (json_normalize(requestsAsJsonPlaylists["items"]))[["uri", "name", "owner.display_name", "owner.id"]]
+        userPlaylists = pd.concat([userPlaylists, loopPlaylists[(loopPlaylists["owner.id"] == username) | (loopPlaylists["owner.display_name"] == username)]])
+
+
+    if requestsAsJsonPlaylists["total"] >= limit:
+        userPlaylists = spotifyUsersPlaylists(username, userPlaylists, offset+limit, limit)
+        return userPlaylists
+    else:
+        userPlaylists = pd.concat([userPlaylists, pd.DataFrame.from_dict({"uri": [f"spotify:user:{username}:collection"], "name": ["Liked Songs"], "owner.display_name": [username], "owner.id": [username]})])
 
     return userPlaylists
 
@@ -934,7 +945,7 @@ else:
     storeTokensInDatabase()
 
     #Get users playlists, allow user to select a playlist
-    userPlaylists = spotifyUsersPlaylists(userName)
+    userPlaylists = spotifyUsersPlaylists(userName, pd.DataFrame())
 
     # Display historical data for all playlists
     historicalData = getHistoricalData(userUri, userPlaylists)
