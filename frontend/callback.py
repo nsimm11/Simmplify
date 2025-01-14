@@ -767,7 +767,7 @@ def display_stats(column, title, statType, display_percentage):
                     {item['Artist Name'] if statType == 'Artist' else f"{item['Song Name']} by {item['Artist Name']}" if statType == 'Song' else userPlaylists[userPlaylists['uri'] == item['playlisturi']]['name'].values[0] if item['playlisturi'] in userPlaylists['uri'].values else 'Non-User Playlist'}
                 </div>
                 <div style="flex: 1; text-align: center;">
-                    <img src="{get_artist_image_url(item['Artist Name']) if statType == 'Artist' else get_album_cover_url(item['Song Name']) if statType == 'Song' else get_playlist_image_url(item.playlisturi)}" width="80" height="80" style="border-radius: 50%; object-fit: cover; object-position: 50% 50%; padding: 5px;">
+                    <img src="{get_artist_image_url(item['Artist Name']) if statType == 'Artist' else get_album_cover_url(item['Song Name']) if statType == 'Song' else get_playlist_image_url(item.playlisturi)}" width="80" height="80" style="border-radius: 4px; object-fit: cover; object-position: 50% 50%; padding: 5px;">
                 </div>
                 <div style="flex: 1; text-align: center;">
                     <p> {item['Preference Score'] if statType == "Artist" or statType == "Song" else np.round(item['Preference Rate'],2)}%</p>
@@ -1105,6 +1105,86 @@ else:
         if stopTracking:
             removeUser()
     
+    with st.expander("Privacy Policy"):
+
+        st.markdown("""
+                    <div style=color:#1DB954; padding:10px;">
+                        <h2>Privacy Policy for Simmplify</h2>
+                    </div>
+
+                    <p><strong>Effective Date:</strong> 13/01/2025</p>
+
+                    <p>At Simmplify, we are committed to protecting your privacy and being transparent about how we collect and use your data. This Privacy Policy outlines the types of data we collect from you when you use our web app and how we use, store, and safeguard that data. By using Simmplify, you agree to the collection and use of information in accordance with this policy.</p>
+
+                    <div style="color:#1DB954; padding:10px;">
+                        <h3>1. Information We Collect</h3>
+                    </div>
+
+                    <p>When you use Simmplify, we collect the following data related to your Spotify activity:</p>
+                    <ul>
+                        <li><strong>Songs Listened To:</strong> We track each song you listen to on Spotify, including the song title, artist, and timestamp of when you start listening.</li>
+                        <li><strong>Listening Duration:</strong> We monitor how much of each song you listen to, based on the timestamp of when you start the song and when it ends, or when the song is skipped.</li>
+                        <li><strong>Skip Data:</strong> We identify songs that you skip by polling the Spotify player at regular intervals. If the song title changes on the next polling loop, we calculate the previous song’s skip timestamp and the duration of time you listened to the song before skipping.</li>
+                    </ul>
+
+                    <div style="color:#1DB954; padding:10px;">
+                        <h3>2. How We Use Your Data</h3>
+                    </div>
+
+                    <p>The data we collect is used for the following purposes:</p>
+                    <ul>
+                        <li><strong>Song Tracking:</strong> To track and store the songs you listen to and skip in order to give you insights about your listening habits, including the songs you skip most often.</li>
+                        <li><strong>Personalized Insights:</strong> To generate insights based on your listening history, providing you with details about songs you skip frequently and offering recommendations accordingly.</li>
+                        <li><strong>App Functionality:</strong> The app requires continuous data polling to function properly. Without this data collection, the app cannot deliver the core features, including song tracking and skip analysis.</li>
+                    </ul>
+
+                    <div style="color:#1DB954; padding:10px;">
+                        <h3>3. Data Retention and Deletion</h3>
+                    </div>
+
+                    <p>Your data is retained for as long as you use Simmplify. If you wish to stop using the app, you can delete all of your data by clicking the "Stop Tracking" button:</p>
+                    <ul>
+                        <li><strong>Stop Tracking:</strong> Clicking the "Stop Tracking" button will immediately delete all data associated with your usage of Simmplify, including the songs you’ve listened to, the time you’ve spent listening, and skip data.</li>
+                        <li><strong>Data Usage Continuation:</strong> If you continue using the app, your data will be collected as described above.</li>
+                    </ul>
+
+                    <div style="color:#1DB954; padding:10px;">
+                        <h3>4. User Control and Rights</h3>
+                    </div>
+
+                    <p>You have control over your data with the following options:</p>
+                    <ul>
+                        <li>You can stop tracking by clicking the "Stop Tracking" button at any time. This will delete all of your stored data.</li>
+                        <li>Please note that once you choose to stop tracking, you will no longer have access to the app's primary features, as the app requires continuous data polling to provide personalized insights.</li>
+                    </ul>
+
+                    <div style="color:#1DB954; padding:10px;">
+                        <h3>5. Data Security</h3>
+                    </div>
+
+                    <p>We prioritize the security of your data and implement standard security protocols to protect it from unauthorized access or disclosure. However, please note that no method of data transmission over the internet is fully secure, and we cannot guarantee absolute security.</p>
+
+                    <div style="color:#1DB954;padding:10px;">
+                        <h3>6. Third-Party Links</h3>
+                    </div>
+
+                    <p>Simmplify may contain links to third-party websites or services that are not operated by us. We have no control over and assume no responsibility for the content, privacy policies, or practices of any third-party sites or services.</p>
+
+                    <div style="color:#1DB954; padding:10px;">
+                        <h3>7. Changes to This Privacy Policy</h3>
+                    </div>
+
+                    <p>We may update our Privacy Policy periodically. When we make changes, we will update the "Effective Date" at the top of this page. We encourage you to review this Privacy Policy periodically for any updates or changes.</p>
+
+                    <div style="color:#1DB954; padding:10px;">
+                        <h3>8. Contact Us</h3>
+                    </div>
+
+                    <p>If you have any questions or concerns regarding this Privacy Policy or our data practices, please contact Noah at simms.noah11@gmail.com</p>
+
+                    <p>By using Simmplify, you acknowledge that you have read and understood this Privacy Policy and agree to its terms.</p>
+                    """, unsafe_allow_html=True)
+    
 
     userCurrentSongPlayingDict = {}
 
@@ -1142,6 +1222,9 @@ else:
 
         with player.container():
             c1, c2, c3, c4 = st.columns(4)
+
+            c4.markdown("All data provided by:")
+            c4.image("images/Spotify_Full_Logo_RGB_Green.png", width=150)
 
             if st.session_state["is_playing"] == True:
                 if st.session_state["previous_song_name"] != userCurrentSongPlayingDict["name"]:
