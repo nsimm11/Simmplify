@@ -1321,6 +1321,7 @@ try:
 finally:
     # Ensure all resources are cleaned up
     grace.close_resources()
+    st.session_state.grace = None
 
 
 
