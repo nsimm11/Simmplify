@@ -133,7 +133,7 @@ class GracefulSSHTunnel:
             except Exception as e:
                 attempts += 1
                 print(f"Attempt {attempts} to connect to the database failed: {e}")
-                time.sleep(3)  # Wait for 2 seconds before retrying
+                time.sleep(4)  # Wait for 2 seconds before retrying
 
         st.warning("Failed to connect to the database after 5 attempts.")
         raise RuntimeError("Failed to connect to the database after 5 attempts.")
