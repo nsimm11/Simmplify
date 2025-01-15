@@ -490,6 +490,7 @@ def getHistoricalData(userUri, userPlaylists):
         lambda x: x.replace(tzinfo=pytz.utc).astimezone(user_timezone).replace(microsecond=0)
     )
 
+    st.write(userPlaylists)
     playlist_map = userPlaylists.set_index('uri')['name'].to_dict()
     historicalData['Playlist Name'] = historicalData['playlisturi'].map(playlist_map).fillna("Non-User Playlist")
 
