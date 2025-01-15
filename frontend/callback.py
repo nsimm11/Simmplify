@@ -114,18 +114,29 @@ class GracefulSSHTunnel:
         raise RuntimeError("Failed to start SSH Tunnel after 5 attempts.")
 
     def connect_to_db(self):
-        if not self.tunnel or not self.tunnel.is_active:
-            raise RuntimeError("SSH tunnel is not active. Start the tunnel before connecting to the database.")
-        
-        self.conn = psycopg2.connect(
-            host='127.0.0.1',  # Local address of the tunnel
-            port=self.tunnel.local_bind_port,
-            database=self.db_name,
-            user=self.db_user,
-            password=self.db_password
-        )
-        print("Database connection established.")
-        return self.conn
+        attempts = 0
+        max_attempts = 5
+        while attempts < max_attempts:
+            try:
+                if not self.tunnel or not self.tunnel.is_active:
+                    raise RuntimeError("SSH tunnel is not active. Start the tunnel before connecting to the database.")
+                
+                self.conn = psycopg2.connect(
+                    host='127.0.0.1',  # Local address of the tunnel
+                    port=self.tunnel.local_bind_port,
+                    database=self.db_name,
+                    user=self.db_user,
+                    password=self.db_password
+                )
+                print("Database connection established.")
+                return self.conn
+            except Exception as e:
+                attempts += 1
+                print(f"Attempt {attempts} to connect to the database failed: {e}")
+                time.sleep(2)  # Wait for 2 seconds before retrying
+
+        st.warning("Failed to connect to the database after 5 attempts.")
+        raise RuntimeError("Failed to connect to the database after 5 attempts.")
 
     def close_resources(self):
         if self.conn:
@@ -866,7 +877,7 @@ try:
     st.session_state["cursor"] = cursor
 
     # Example infinite loop to simulate app behavior
-    timeout = 60  # Timeout in seconds
+    timeout = 180  # Timeout in seconds
 
     query_params = st.query_params  # Use st.query_params directly
     if "username" in query_params:
