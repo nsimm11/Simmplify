@@ -8,11 +8,10 @@ from datetime import datetime, timedelta, timezone
 import pandas as pd
 from pandas import json_normalize
 import time
-import pyodbc
 import pytz
 import matplotlib.pyplot as plt
 import psycopg2
-import sshtunnel
+from sshtunnel import SSHTunnelForwarder
 import tempfile
 
 st.set_page_config(
@@ -58,6 +57,8 @@ if 'cursor' not in st.session_state:
     st.session_state['cursor'] = ""
 if 'server' not in st.session_state:
     st.session_state['server'] = None
+if 'last_active' not in st.session_state:
+    st.session_state.last_active = time.time()
 
 
 
@@ -69,76 +70,87 @@ sp_oauth = SpotifyOAuth(client_id=st.secrets["spotify"]["CLIENT_ID"],
                         redirect_uri=st.secrets["spotify"]["REDIRECT_URI"],
                         scope=SCOPE)
 
-def connect_to_db_postgres():
-    # Load SSH and PostgreSQL secrets
-    ssh_username = st.secrets["ssh"]["username_ssh"]
-    ssh_private_key = st.secrets["ssh"]["private_key_ssh"]
-    ssh_private_key_passphrase = st.secrets["ssh"].get("private_key_passphrase", None)
+class GracefulSSHTunnel:
+    def __init__(self, ssh_username, ssh_password, ssh_private_key, db_host, db_port, db_name, db_user, db_password):
+        self.ssh_username = ssh_username
+        self.ssh_password = ssh_password
+        self.ssh_private_key = ssh_private_key
+        self.db_host = db_host
+        self.db_port = db_port
+        self.db_name = db_name
+        self.db_user = db_user
+        self.db_password = db_password
+        self.tunnel = None
+        self.conn = None
+        self.temp_key_path = None
 
-    postgres_hostname = st.secrets["postgres"]["hostname"]
-    postgres_host_port = st.secrets["postgres"]["port"]
-    postgres_username = st.secrets["postgres"]["username_post"]
-    postgres_password = st.secrets["postgres"]["password_post"]
-    postgres_database = st.secrets["postgres"]["database_post"]
+        # Write the private key to a temporary file
+        with tempfile.NamedTemporaryFile("w", delete=False) as temp_key_file:
+            temp_key_file.write(self.ssh_private_key)
+            self.temp_key_path = temp_key_file.name
 
-    # Write the private key to a temporary file
-    with tempfile.NamedTemporaryFile("w", delete=False) as temp_key_file:
-        temp_key_file.write(ssh_private_key)
-        temp_key_path = temp_key_file.name
+    def start_tunnel(self):
+        self.tunnel = SSHTunnelForwarder(
+            ssh_address_or_host=('ssh.pythonanywhere.com', 22),
+            ssh_username=self.ssh_username,
+            ssh_pkey=self.temp_key_path,
+            ssh_private_key_password=self.ssh_password,
+            remote_bind_address=(self.db_host, self.db_port),
+            local_bind_address=('127.0.0.1', 43219)
+        )
+        self.tunnel.start()
+        print("SSH Tunnel started.")
+        return self.tunnel
 
-    max_retries = 5  # Number of retry attempts
-    retry_delay = 2  # Delay between retries (seconds)
-    
-    for attempt in range(1, max_retries + 1):
-        try:
-            # Establish SSH tunnel
-            post_server = sshtunnel.SSHTunnelForwarder(
-                ssh_address_or_host=('ssh.pythonanywhere.com', 22),
-                ssh_username=ssh_username,
-                ssh_pkey=temp_key_path,
-                ssh_private_key_password=ssh_private_key_passphrase,
-                remote_bind_address=(postgres_hostname, postgres_host_port),
-                local_bind_address=('127.0.0.1', 43219)
-            )
-            post_server.start()
-
-            try:
-                # Connect to PostgreSQL
-                conn = psycopg2.connect(
-                    dbname=postgres_database,
-                    user=postgres_username,
-                    password=postgres_password,
-                    host="localhost",
-                    port=post_server.local_bind_port,
-                    sslmode="disable",
-                )
-
-                cursor = conn.cursor()
-                return conn, cursor, post_server  # Return the SSH tunnel as well for later cleanup
-            except Exception as db_error:
-                #print(f"Database connection failed: {db_error}")
-                print("Database connection issue")
-
-        except Exception as ssh_error:
-            print(f"SSH tunnel setup failed (attempt {attempt}/{max_retries}): {ssh_error}")
-            if attempt < max_retries:
-                time.sleep(retry_delay)  # Wait before retrying
-            else:
-                st.error("Failed to establish SSH tunnel after multiple attempts.")
+    def connect_to_db(self):
+        if not self.tunnel or not self.tunnel.is_active:
+            raise RuntimeError("SSH tunnel is not active. Start the tunnel before connecting to the database.")
         
-    post_server.stop()  # Ensure the tunnel is stopped if DB connection fails
-    return "", "", None
+        self.conn = psycopg2.connect(
+            host='127.0.0.1',  # Local address of the tunnel
+            port=self.tunnel.local_bind_port,
+            database=self.db_name,
+            user=self.db_user,
+            password=self.db_password
+        )
+        print("Database connection established.")
+        return self.conn
+
+    def close_resources(self):
+        if self.conn:
+            self.conn.close()
+            print("Database connection closed.")
+        if self.tunnel and self.tunnel.is_active:
+            self.tunnel.stop()
+            print("SSH Tunnel closed.")
 
 
-if (st.session_state['cursor'] == None or st.session_state['cursor'] == "") and (st.session_state['conn'] == None or st.session_state['conn'] == ""):
-    st.session_state['conn'], st.session_state['cursor'], st.session_state["server"] = connect_to_db_postgres()
-    conn = st.session_state["conn"]
-    cursor = st.session_state["cursor"]
-    server = st.session_state["server"]
+# Track user activity
+if 'last_active' not in st.session_state:
+    st.session_state.last_active = time.time()
 
-    if conn == "" and cursor == "" and server == None:
-        st.write("Error connecting to server. Please refresh the page to try again.")
-        st.stop()
+# Update activity timestamp
+st.session_state.last_active = time.time()
+
+# Initialize and manage resources
+grace = GracefulSSHTunnel(
+    ssh_username = st.secrets["ssh"]["username_ssh"],
+    ssh_password = st.secrets["ssh"].get("private_key_passphrase", None),
+    ssh_private_key = st.secrets["ssh"]["private_key_ssh"],
+    db_user = st.secrets["postgres"]["username_post"],
+    db_password = st.secrets["postgres"]["password_post"],
+    db_name = st.secrets["postgres"]["database_post"],
+    db_host = st.secrets["postgres"]["hostname"],
+    db_port = st.secrets["postgres"]["port"]
+)
+
+
+
+
+
+
+
+
 
 
 def hide_streamlit_style():
@@ -833,437 +845,455 @@ def removeUser():
 
     st.rerun()
 
-query_params = st.query_params  # Use st.query_params directly
-if "username" in query_params:
-    query_params_user = query_params.get("username")
-else:
-    query_params_user = None
-code = query_params.get("code")  # Get the code directly
+try:
+    grace.start_tunnel()
+    conn = grace.connect_to_db()
+    st.session_state["conn"] = conn
 
-if code == None and st.session_state['auth_code'] == None and query_params_user == None:
-    st.markdown(
+    # Example query: Fetching data from the database
+    cursor = conn.cursor()
+    st.session_state["cursor"] = cursor
+
+    # Example infinite loop to simulate app behavior
+    timeout = 60  # Timeout in seconds
+
+    query_params = st.query_params  # Use st.query_params directly
+    if "username" in query_params:
+        query_params_user = query_params.get("username")
+    else:
+        query_params_user = None
+    code = query_params.get("code")  # Get the code directly
+
+    if code == None and st.session_state['auth_code'] == None and query_params_user == None:
+        st.markdown(
+            
+                """
+                <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
+                <h1 style="font-size: 4rem; margin: 0; color: #1DB954;">SIMMPLIFY</h1>
+                <p style="font-size: 1.5rem;">Track your habits and declutter your playlists to enjoy your favourite songs, more often!</p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        # Step 1: Get the authentication URL
+        auth_url = sp_oauth.get_authorize_url()
+
+        st.markdown(f"""
+                <div style="display: flex; justify-content: center;">
+                    <a href="{auth_url}">
+                        <button class="button" style="background-color: #1DB954; text-align: center; color: #FFFFFF; border: none; padding: 15px 30px; font-size: 1rem; border-radius: 25px; cursor: pointer;">
+                            Authenticate with Spotify
+                        </button>
+                    </a>
+                </div>
+            """, unsafe_allow_html=True)
         
-            """
-            <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
-            <h1 style="font-size: 4rem; margin: 0; color: #1DB954;">SIMMPLIFY</h1>
-            <p style="font-size: 1.5rem;">Track your habits and declutter your playlists to enjoy your favourite songs, more often!</p>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+        st.markdown(
+                """
+                <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
+                <hr style="border: 1px solid #1DB954; width: 100%; margin: 20px auto;" />
 
-    # Step 1: Get the authentication URL
-    auth_url = sp_oauth.get_authorize_url()
+                <div style="margin-top: 20px;">
+                    <h2 style="color: #1DB954;">How It Works</h2>
+                    <p style="line-height: 1.6;">
+                    Tired of songs that don't hit the right vibe anymore? SIMMPLIFY tracks how often you skip songs on your playlists and helps you decide which tracks to keep or remove. Just log in with your Spotify account, let SIMMPLIFY do its magic, and enjoy a finely-tuned playlist that's perfect for you!
+                    </p>
+                </div>
+                <div style="margin-top: 20px;">
+                    <h2 style="color: #1DB954;">How To Use</h2>
+                    <p>Connect your Spotify account with the Button Above and listen like normal.</p>
+                    <p>Check back here in a week or two to see your suggested playlist updates!</p>
+                    <p>The Simmplify Data Section will calculate and sort your playlist songs by how often they are skipped.</p>
+                    <p>Use the buttons to automatically remove songs based on preference score.</p>
+                    <p>The Historical Data Section will show you a list of every song you have listened to and listening percentage.</p>
 
-    st.markdown(f"""
-            <div style="display: flex; justify-content: center;">
-                <a href="{auth_url}">
-                    <button class="button" style="background-color: #1DB954; text-align: center; color: #FFFFFF; border: none; padding: 15px 30px; font-size: 1rem; border-radius: 25px; cursor: pointer;">
-                        Authenticate with Spotify
-                    </button>
-                </a>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        
+        image_path = get_NoahImage()
+
+        st.markdown(f"""
+            <div style="text-align: center; padding: 10px; border: 2px solid #1DB954; border-radius: 10px; background-color: rgba(255, 255, 255, 0.0);">
+                <h4 style="color: #1DB954; font-size: 1.5em; margin-bottom: 5px;">Creator Info:</h4>
+                <img src="{image_path}" width="80" height="80" style="border-radius: 50%; object-fit: cover; object-position: 40% 50%;">
+                <p style="color: #1DB954; font-size: 1.0em; margin-bottom: 5px;">Noah Simms - Developer and Music Enthusiast</p>
+                <a href="https://www.instagram.com/nsimm22/?hl=en" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">Instagram 🌟</a>
+                <a href="https://github.com/nsimm11" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">GitHub 💻</a>
+                <a href="https://ca.linkedin.com/in/noah-simms-360724162" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">LinkedIn 💼</a>
             </div>
         """, unsafe_allow_html=True)
-    
-    st.markdown(
-            """
-            <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
-            <hr style="border: 1px solid #1DB954; width: 100%; margin: 20px auto;" />
 
-            <div style="margin-top: 20px;">
-                <h2 style="color: #1DB954;">How It Works</h2>
-                <p style="line-height: 1.6;">
-                Tired of songs that don't hit the right vibe anymore? SIMMPLIFY tracks how often you skip songs on your playlists and helps you decide which tracks to keep or remove. Just log in with your Spotify account, let SIMMPLIFY do its magic, and enjoy a finely-tuned playlist that's perfect for you!
-                </p>
+
+    else:
+        #After authentication, display the player and simmplify page
+        st.markdown("""
+            <div style="text-align: center; margin-top: 10px;">
+                <h1 style="color: #1DB954; font-size: 4em; margin-bottom: 10px;">SIMMPLIFY</h1>
+                <p style="font-size: 1.5em; color: #FFFFFF;">Track your habits and declutter your playlists to enjoy your favourite songs, more often!</p>
+                <hr style="border: 1px solid #1DB954; width: 100%; margin: 20px auto;" />
             </div>
-            <div style="margin-top: 20px;">
-                <h2 style="color: #1DB954;">How To Use</h2>
-                <p>Connect your Spotify account with the Button Above and listen like normal.</p>
-                <p>Check back here in a week or two to see your suggested playlist updates!</p>
-                <p>The Simmplify Data Section will calculate and sort your playlist songs by how often they are skipped.</p>
-                <p>Use the buttons to automatically remove songs based on preference score.</p>
-                <p>The Historical Data Section will show you a list of every song you have listened to and listening percentage.</p>
+        """, unsafe_allow_html=True)
 
+        st.markdown(
+            """<div style="text-align: left">
+                <h3 style="color: #1DB954; font-size: 2em;">Player:</h3>
+            </div>""", unsafe_allow_html=True)
+        
+        player = st.empty()
+        
+        st.markdown("""
+            <div style="text-align: left">
+                <hr style="border: 1px solid #1DB954; width: 100%" />
+                <h3 style="color: #1DB954; font-size: 2em;">Simmplify Data:</h3>
             </div>
-            """,
-            unsafe_allow_html=True
-        )
-    
-    image_path = get_NoahImage()
+        """, unsafe_allow_html=True)
 
-    st.markdown(f"""
-        <div style="text-align: center; padding: 10px; border: 2px solid #1DB954; border-radius: 10px; background-color: rgba(255, 255, 255, 0.0);">
-            <h4 style="color: #1DB954; font-size: 1.5em; margin-bottom: 5px;">Creator Info:</h4>
-            <img src="{image_path}" width="80" height="80" style="border-radius: 50%; object-fit: cover; object-position: 40% 50%;">
-            <p style="color: #1DB954; font-size: 1.0em; margin-bottom: 5px;">Noah Simms - Developer and Music Enthusiast</p>
-            <a href="https://www.instagram.com/nsimm22/?hl=en" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">Instagram 🌟</a>
-            <a href="https://github.com/nsimm11" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">GitHub 💻</a>
-            <a href="https://ca.linkedin.com/in/noah-simms-360724162" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">LinkedIn 💼</a>
-        </div>
-    """, unsafe_allow_html=True)
+        cursor = st.session_state["cursor"]
+        conn = st.session_state["conn"]
 
 
-else:
-    #After authentication, display the player and simmplify page
-    st.markdown("""
-        <div style="text-align: center; margin-top: 10px;">
-            <h1 style="color: #1DB954; font-size: 4em; margin-bottom: 10px;">SIMMPLIFY</h1>
-            <p style="font-size: 1.5em; color: #FFFFFF;">Track your habits and declutter your playlists to enjoy your favourite songs, more often!</p>
-            <hr style="border: 1px solid #1DB954; width: 100%; margin: 20px auto;" />
-        </div>
-    """, unsafe_allow_html=True)
+        # Call the login function at the start of the script
+        login()
 
-    st.markdown(
-        """<div style="text-align: left">
-            <h3 style="color: #1DB954; font-size: 2em;">Player:</h3>
-        </div>""", unsafe_allow_html=True)
-    
-    player = st.empty()
-    
-    st.markdown("""
-        <div style="text-align: left">
-            <hr style="border: 1px solid #1DB954; width: 100%" />
-            <h3 style="color: #1DB954; font-size: 2em;">Simmplify Data:</h3>
-        </div>
-    """, unsafe_allow_html=True)
-
-    cursor = st.session_state["cursor"]
-    conn = st.session_state["conn"]
-
-
-    # Call the login function at the start of the script
-    login()
-
-    #Pull user information from database or spotify
-    userName, userUri, userId = getUserInfo()
-    if st.session_state["UserUri"] != userUri and st.session_state["UserUri"] != "":
+        #Pull user information from database or spotify
         userName, userUri, userId = getUserInfo()
-    if userName is None and userUri is None and userId is None:
-        st.warning("No user information found, please authenticate again.")
-        st.stop()
-    useDbId = getUserId(userUri)
-    storeTokensInDatabase()
+        if st.session_state["UserUri"] != userUri and st.session_state["UserUri"] != "":
+            userName, userUri, userId = getUserInfo()
+        if userName is None and userUri is None and userId is None:
+            st.warning("No user information found, please authenticate again.")
+            st.stop()
+        useDbId = getUserId(userUri)
+        storeTokensInDatabase()
 
-    #Get users playlists, allow user to select a playlist
-    userPlaylists = spotifyUsersPlaylists(userName, pd.DataFrame())
+        #Get users playlists, allow user to select a playlist
+        userPlaylists = spotifyUsersPlaylists(userName, pd.DataFrame())
 
-    # Display historical data for all playlists
-    historicalData = getHistoricalData(userUri, userPlaylists)
-    summarizedData = getSummarizedData(historicalData)
+        # Display historical data for all playlists
+        historicalData = getHistoricalData(userUri, userPlaylists)
+        summarizedData = getSummarizedData(historicalData)
 
-    # Add the "Liked Songs" playlist to the DataFrame
-    liked_songs = pd.DataFrame({'uri': [f'spotify:user:{userName}:collection'], 'name': ['Liked Songs'], 'owner.display_name': [userName], 'owner.id': [userId]})
-    userPlaylists = pd.concat([userPlaylists, liked_songs], ignore_index=True)
+        # Add the "Liked Songs" playlist to the DataFrame
+        liked_songs = pd.DataFrame({'uri': [f'spotify:user:{userName}:collection'], 'name': ['Liked Songs'], 'owner.display_name': [userName], 'owner.id': [userId]})
+        userPlaylists = pd.concat([userPlaylists, liked_songs], ignore_index=True)
 
-    # Add "ALL" option to the list of playlist names
-    playlist_options = ["ALL"] + list(userPlaylists["name"].unique())
-    st.markdown("##### Filters:")
-    sde1, sde2, sde3 = st.columns(3)
-    selectedPlaylistName = sde1.selectbox("Filter by Playlist", placeholder="-", options=playlist_options)
-    if len(summarizedData) > 0:
-        playMin = sde2.slider("Filter by Minimum Number of Plays", min_value=1, max_value=max(summarizedData["Play Count"])+1, value=1)
-        scoreMin_start = min(summarizedData["Preference Score"])
-        scoreMin_end = max(summarizedData["Preference Score"])
-        scoreMin, scoreMax = sde3.slider("Filter By Maximum Preference Score", min_value=scoreMin_start-1, max_value=scoreMin_end+1, value=[scoreMin_start, 0])
-    else:
-        playMin = 1
-        scoreMin = 0
-        scoreMax = 100
+        # Add "ALL" option to the list of playlist names
+        playlist_options = ["ALL"] + list(userPlaylists["name"].unique())
+        st.markdown("##### Filters:")
+        sde1, sde2, sde3 = st.columns(3)
+        selectedPlaylistName = sde1.selectbox("Filter by Playlist", placeholder="-", options=playlist_options)
+        if len(summarizedData) > 0:
+            playMin = sde2.slider("Filter by Minimum Number of Plays", min_value=1, max_value=max(summarizedData["Play Count"])+1, value=1)
+            scoreMin_start = min(summarizedData["Preference Score"])
+            scoreMin_end = max(summarizedData["Preference Score"])
+            scoreMin, scoreMax = sde3.slider("Filter By Maximum Preference Score", min_value=scoreMin_start-1, max_value=scoreMin_end+1, value=[scoreMin_start, 0])
+        else:
+            playMin = 1
+            scoreMin = 0
+            scoreMax = 100
 
-    if selectedPlaylistName == "ALL":
-        selectedPlaylistUri = None  # No filtering by playlist
-    else:
-        selectedPlaylistUri = userPlaylists[userPlaylists["name"] == selectedPlaylistName]["uri"].values[0]
+        if selectedPlaylistName == "ALL":
+            selectedPlaylistUri = None  # No filtering by playlist
+        else:
+            selectedPlaylistUri = userPlaylists[userPlaylists["name"] == selectedPlaylistName]["uri"].values[0]
 
-    st.session_state['SelectedPlaylist'] = selectedPlaylistUri
+        st.session_state['SelectedPlaylist'] = selectedPlaylistUri
 
-    summarizedListeningData, lengthPostFilter, filteredSummarizedData = filterAndStyleSummarizedData(summarizedData.copy(), selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
-    topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists = summarizedAdvancedStats(summarizedData)
+        summarizedListeningData, lengthPostFilter, filteredSummarizedData = filterAndStyleSummarizedData(summarizedData.copy(), selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
+        topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists = summarizedAdvancedStats(summarizedData)
 
-    historicalDataStyled = format_historical_data(historicalData, selectedPlaylistName)    
+        historicalDataStyled = format_historical_data(historicalData, selectedPlaylistName)    
 
-    simmplify = st.empty()
+        simmplify = st.empty()
 
 
-    cb1, cb2, cb3, cb4 = st.columns([4,4,4,6])
+        cb1, cb2, cb3, cb4 = st.columns([4,4,4,6])
 
-    with cb1.expander("Remove Orange Songs (Score < -100)"):
-        orange_songs = filteredSummarizedData[filteredSummarizedData["Preference Score"] < -100]
-        st.warning(f"This will remove {len(orange_songs)} songs which have a score less than -100 from Playlist: {selectedPlaylistName}.")
-        clearYellowSongsButton = st.button("Clear Yellow Songs")
-        if clearYellowSongsButton:
-            clearFromSpotify(orange_songs)
-    with cb2.expander("Remove Red Songs (Score < -300)"):
-        red_songs = filteredSummarizedData[filteredSummarizedData["Preference Score"] < -300]
-        st.warning(f"This will remove {len(red_songs)} songs from Playlist: {selectedPlaylistName}.")
-        clearRedSongsButton = st.button("Clear Red Songs")
-        if clearRedSongsButton:
-            clearFromSpotify(red_songs)
-    with cb3.expander("Clear Filtered Songs"):
-        st.warning(f"This will remove {lengthPostFilter} songs from Playlist: {selectedPlaylistName}.")
-        filteredSongsButton = st.button("Clear Filtered Songs")
-        if filteredSongsButton:
-            clearFromSpotify(filteredSummarizedData)
-
-    st.markdown("""
-        <div style="text-align: center">
-            <hr style="border: 1px solid #1DB954; width: 100%" />
-            <h3 style="color: #1DB954; font-size: 2em;">Biggest Hits</h3>
-        </div>
-    """, unsafe_allow_html=True)
-
-    biggestHits = st.empty()
-
-    st.markdown("""
-        <div style="text-align: center">
-            <hr style="border: 1px solid #1DB954; width: 100%" />
-            <h3 style="color: #1DB954; font-size: 2em;">Biggest Misses</h3>
-        </div>  
-    """, unsafe_allow_html=True)
-
-    biggestMisses = st.empty()
-
-    st.markdown("""
-        <div style="text-align: left">
-            <hr style="border: 1px solid #1DB954; width: 100%" />
-            <h3 style="color: #1DB954; font-size: 2em;">Historical Listening Data (Last 150 Songs):</h3>
-        </div>
-    """, unsafe_allow_html=True)
-
-    historical = st.empty()
-
-    image_path = get_NoahImage()
-
-    st.markdown(f"""
-        <div style="text-align: center; padding: 10px; border: 2px solid #1DB954; border-radius: 10px; background-color: rgba(255, 255, 255, 0.0);">
-            <h4 style="color: #1DB954; font-size: 1.5em; margin-bottom: 5px;">Creator Info:</h4>
-            <img src="{image_path}" width="80" height="80" style="border-radius: 50%; object-fit: cover; object-position: 40% 50%;">
-            <p style="color: #1DB954; font-size: 1.0em; margin-bottom: 5px;">Noah Simms - Developer and Music Enthusiast</p>
-            <a href="https://www.instagram.com/nsimm22/?hl=en" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">Instagram 🌟</a>
-            <a href="https://github.com/nsimm11" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">GitHub 💻</a>
-            <a href="https://ca.linkedin.com/in/noah-simms-360724162" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">LinkedIn 💼</a>
-        </div>
-    """, unsafe_allow_html=True)
-
-    startTime = datetime.now(pytz.utc)
-
-    with biggestHits.container():
-
-        # Clear previous columns
-        as1, as2, as3 = st.columns(3, gap="medium", border=True)
-
-        # Display Most Listened to Artists
-        with as1:
-            display_stats(topArtists, "Most Played Artists", "Artist", display_percentage='listened')
-
-        # Display Most Listened to Songs
-        with as2:
-            display_stats(topSongs, "Most Played Songs", "Song", display_percentage='listened')
-
-        # Display Most Skipped Artists
-        with as3:
-            display_stats(topPlaylists, "Most Played Playlists", "Playlist", display_percentage='listened')
-
-    with biggestMisses.container():
-        # Clear previous columns
-        bm1, bm2, bm3 = st.columns(3, gap="medium", border=True)
-
-        # Display Most Skipped Artists
-        with bm1:
-            display_stats(bottomArtists, "Most Skipped Artists", "Artist", display_percentage='skipped')
-
-        # Display Most Skipped Songs
-        with bm2:
-            display_stats(bottomSongs, "Most Skipped Songs", "Song", display_percentage='skipped')
-
-        # Display Most Skipped Playlists
-        with bm3:   
-            display_stats(bottomPlaylists, "Most Skipped Playlists", "Playlist", display_percentage='skipped')
-
-    st.markdown(""" 
-        <div style="text-align: center" padding: 10px;>
-        </div>
-    """, unsafe_allow_html=True) 
-
-    # Inject custom CSS to style the expander, expander should have the spotify green border
-    custom_css = """
-    <style>
-        .stExpander {
-            border: 1px solid #1DB954 !important; /* Thicker green border */
-            border-radius: 8px; /* Optional: adjust border radius */
-            box-shadow: none !important; /* Remove any shadows */
-            text-align: cemter; /* Align text to the left */
-        }
-    </style>
-    """
-
-    # Inject CSS using st.markdown
-    st.markdown(custom_css, unsafe_allow_html=True)
-
-    with st.expander("Stop Tracking"):
-        stopTracking = st.button("Stop Tracking")
-        if stopTracking:
-            removeUser()
-    
-    with st.expander("Privacy Policy"):
+        with cb1.expander("Remove Orange Songs (Score < -100)"):
+            orange_songs = filteredSummarizedData[filteredSummarizedData["Preference Score"] < -100]
+            st.warning(f"This will remove {len(orange_songs)} songs which have a score less than -100 from Playlist: {selectedPlaylistName}.")
+            clearYellowSongsButton = st.button("Clear Yellow Songs")
+            if clearYellowSongsButton:
+                clearFromSpotify(orange_songs)
+        with cb2.expander("Remove Red Songs (Score < -300)"):
+            red_songs = filteredSummarizedData[filteredSummarizedData["Preference Score"] < -300]
+            st.warning(f"This will remove {len(red_songs)} songs from Playlist: {selectedPlaylistName}.")
+            clearRedSongsButton = st.button("Clear Red Songs")
+            if clearRedSongsButton:
+                clearFromSpotify(red_songs)
+        with cb3.expander("Clear Filtered Songs"):
+            st.warning(f"This will remove {lengthPostFilter} songs from Playlist: {selectedPlaylistName}.")
+            filteredSongsButton = st.button("Clear Filtered Songs")
+            if filteredSongsButton:
+                clearFromSpotify(filteredSummarizedData)
 
         st.markdown("""
-                    <div style=color:#1DB954; padding:10px;">
-                        <h2>Privacy Policy for Simmplify</h2>
-                    </div>
+            <div style="text-align: center">
+                <hr style="border: 1px solid #1DB954; width: 100%" />
+                <h3 style="color: #1DB954; font-size: 2em;">Biggest Hits</h3>
+            </div>
+        """, unsafe_allow_html=True)
 
-                    <p><strong>Effective Date:</strong> 13/01/2025</p>
+        biggestHits = st.empty()
 
-                    <p>At Simmplify, we are committed to protecting your privacy and being transparent about how we collect and use your data. This Privacy Policy outlines the types of data we collect from you when you use our web app and how we use, store, and safeguard that data. By using Simmplify, you agree to the collection and use of information in accordance with this policy.</p>
+        st.markdown("""
+            <div style="text-align: center">
+                <hr style="border: 1px solid #1DB954; width: 100%" />
+                <h3 style="color: #1DB954; font-size: 2em;">Biggest Misses</h3>
+            </div>  
+        """, unsafe_allow_html=True)
 
-                    <div style="color:#1DB954; padding:10px;">
-                        <h3>1. Information We Collect</h3>
-                    </div>
+        biggestMisses = st.empty()
 
-                    <p>When you use Simmplify, we collect the following data related to your Spotify activity:</p>
-                    <ul>
-                        <li><strong>Songs Listened To:</strong> We track each song you listen to on Spotify, including the song title, artist, and timestamp of when you start listening.</li>
-                        <li><strong>Listening Duration:</strong> We monitor how much of each song you listen to, based on the timestamp of when you start the song and when it ends, or when the song is skipped.</li>
-                        <li><strong>Skip Data:</strong> We identify songs that you skip by polling the Spotify player at regular intervals. If the song title changes on the next polling loop, we calculate the previous song’s skip timestamp and the duration of time you listened to the song before skipping.</li>
-                    </ul>
+        st.markdown("""
+            <div style="text-align: left">
+                <hr style="border: 1px solid #1DB954; width: 100%" />
+                <h3 style="color: #1DB954; font-size: 2em;">Historical Listening Data (Last 150 Songs):</h3>
+            </div>
+        """, unsafe_allow_html=True)
 
-                    <div style="color:#1DB954; padding:10px;">
-                        <h3>2. How We Use Your Data</h3>
-                    </div>
+        historical = st.empty()
 
-                    <p>The data we collect is used for the following purposes:</p>
-                    <ul>
-                        <li><strong>Song Tracking:</strong> To track and store the songs you listen to and skip in order to give you insights about your listening habits, including the songs you skip most often.</li>
-                        <li><strong>Personalized Insights:</strong> To generate insights based on your listening history, providing you with details about songs you skip frequently and offering recommendations accordingly.</li>
-                        <li><strong>App Functionality:</strong> The app requires continuous data polling to function properly. Without this data collection, the app cannot deliver the core features, including song tracking and skip analysis.</li>
-                    </ul>
+        image_path = get_NoahImage()
 
-                    <div style="color:#1DB954; padding:10px;">
-                        <h3>3. Data Retention and Deletion</h3>
-                    </div>
+        st.markdown(f"""
+            <div style="text-align: center; padding: 10px; border: 2px solid #1DB954; border-radius: 10px; background-color: rgba(255, 255, 255, 0.0);">
+                <h4 style="color: #1DB954; font-size: 1.5em; margin-bottom: 5px;">Creator Info:</h4>
+                <img src="{image_path}" width="80" height="80" style="border-radius: 50%; object-fit: cover; object-position: 40% 50%;">
+                <p style="color: #1DB954; font-size: 1.0em; margin-bottom: 5px;">Noah Simms - Developer and Music Enthusiast</p>
+                <a href="https://www.instagram.com/nsimm22/?hl=en" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">Instagram 🌟</a>
+                <a href="https://github.com/nsimm11" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">GitHub 💻</a>
+                <a href="https://ca.linkedin.com/in/noah-simms-360724162" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">LinkedIn 💼</a>
+            </div>
+        """, unsafe_allow_html=True)
 
-                    <p>Your data is retained for as long as you use Simmplify. If you wish to stop using the app, you can delete all of your data by clicking the "Stop Tracking" button:</p>
-                    <ul>
-                        <li><strong>Stop Tracking:</strong> Clicking the "Stop Tracking" button will immediately delete all data associated with your usage of Simmplify, including the songs you’ve listened to, the time you’ve spent listening, and skip data.</li>
-                        <li><strong>Data Usage Continuation:</strong> If you continue using the app, your data will be collected as described above.</li>
-                    </ul>
+        startTime = datetime.now(pytz.utc)
 
-                    <div style="color:#1DB954; padding:10px;">
-                        <h3>4. User Control and Rights</h3>
-                    </div>
+        with biggestHits.container():
 
-                    <p>You have control over your data with the following options:</p>
-                    <ul>
-                        <li>You can stop tracking by clicking the "Stop Tracking" button at any time. This will delete all of your stored data.</li>
-                        <li>Please note that once you choose to stop tracking, you will no longer have access to the app's primary features, as the app requires continuous data polling to provide personalized insights.</li>
-                    </ul>
+            # Clear previous columns
+            as1, as2, as3 = st.columns(3, gap="medium", border=True)
 
-                    <div style="color:#1DB954; padding:10px;">
-                        <h3>5. Data Security</h3>
-                    </div>
+            # Display Most Listened to Artists
+            with as1:
+                display_stats(topArtists, "Most Played Artists", "Artist", display_percentage='listened')
 
-                    <p>We prioritize the security of your data and implement standard security protocols to protect it from unauthorized access or disclosure. However, please note that no method of data transmission over the internet is fully secure, and we cannot guarantee absolute security.</p>
+            # Display Most Listened to Songs
+            with as2:
+                display_stats(topSongs, "Most Played Songs", "Song", display_percentage='listened')
 
-                    <div style="color:#1DB954;padding:10px;">
-                        <h3>6. Third-Party Links</h3>
-                    </div>
+            # Display Most Skipped Artists
+            with as3:
+                display_stats(topPlaylists, "Most Played Playlists", "Playlist", display_percentage='listened')
 
-                    <p>Simmplify may contain links to third-party websites or services that are not operated by us. We have no control over and assume no responsibility for the content, privacy policies, or practices of any third-party sites or services.</p>
+        with biggestMisses.container():
+            # Clear previous columns
+            bm1, bm2, bm3 = st.columns(3, gap="medium", border=True)
 
-                    <div style="color:#1DB954; padding:10px;">
-                        <h3>7. Changes to This Privacy Policy</h3>
-                    </div>
+            # Display Most Skipped Artists
+            with bm1:
+                display_stats(bottomArtists, "Most Skipped Artists", "Artist", display_percentage='skipped')
 
-                    <p>We may update our Privacy Policy periodically. When we make changes, we will update the "Effective Date" at the top of this page. We encourage you to review this Privacy Policy periodically for any updates or changes.</p>
+            # Display Most Skipped Songs
+            with bm2:
+                display_stats(bottomSongs, "Most Skipped Songs", "Song", display_percentage='skipped')
 
-                    <div style="color:#1DB954; padding:10px;">
-                        <h3>8. Contact Us</h3>
-                    </div>
+            # Display Most Skipped Playlists
+            with bm3:   
+                display_stats(bottomPlaylists, "Most Skipped Playlists", "Playlist", display_percentage='skipped')
 
-                    <p>If you have any questions or concerns regarding this Privacy Policy or our data practices, please contact Noah at simms.noah11@gmail.com</p>
+        st.markdown(""" 
+            <div style="text-align: center" padding: 10px;>
+            </div>
+        """, unsafe_allow_html=True) 
 
-                    <p>By using Simmplify, you acknowledge that you have read and understood this Privacy Policy and agree to its terms.</p>
-                    """, unsafe_allow_html=True)
-    
+        # Inject custom CSS to style the expander, expander should have the spotify green border
+        custom_css = """
+        <style>
+            .stExpander {
+                border: 1px solid #1DB954 !important; /* Thicker green border */
+                border-radius: 8px; /* Optional: adjust border radius */
+                box-shadow: none !important; /* Remove any shadows */
+                text-align: cemter; /* Align text to the left */
+            }
+        </style>
+        """
 
-    userCurrentSongPlayingDict = {}
+        # Inject CSS using st.markdown
+        st.markdown(custom_css, unsafe_allow_html=True)
 
-    while True:
-    
-        if (datetime.now(pytz.utc) - startTime).total_seconds() % 10 < 1:
-            player_data = spotifyUserCurrentSongPlaying()
-            if player_data is not None and not player_data.empty:
-                userCurrentSongPlayingDict = player_data.to_dict('records')[0]
-                if userCurrentSongPlayingDict["CurrentPlaylistUri"] == userName:
-                    userCurrentSongPlayingDict["CurrentPlaylistUri"] = "spotify:user:" + userName + ":collection"
-                else: userCurrentSongPlayingDict["CurrentPlaylistUri"] = "spotify:playlist:" + userCurrentSongPlayingDict["CurrentPlaylistUri"]
-            else:
-                userCurrentSongPlayingDict = {
-                    "name": "No song playing",
-                    "artists": [],
-                    "album.name": "",
-                    "duration_ms": 0,
-                    "SongCurrentPosition": 0,
-                    "CurrentPlaylistUri": ""
-                }
+        with st.expander("Stop Tracking"):
+            stopTracking = st.button("Stop Tracking")
+            if stopTracking:
+                removeUser()
+        
+        with st.expander("Privacy Policy"):
 
-        elif "SongCurrentPosition" not in userCurrentSongPlayingDict:
-                userCurrentSongPlayingDict = {
-                    "name": "No song playing",
-                    "artists": [],
-                    "album.name": "",
-                    "duration_ms": 0,
-                    "SongCurrentPosition": 0,
-                    "CurrentPlaylistUri": ""
-                }
-        else:
-            userCurrentSongPlayingDict["SongCurrentPosition"] = min(float(userCurrentSongPlayingDict["duration_ms"]), float(userCurrentSongPlayingDict["SongCurrentPosition"]) + 1000)
+            st.markdown("""
+                        <div style=color:#1DB954; padding:10px;">
+                            <h2>Privacy Policy for Simmplify</h2>
+                        </div>
 
+                        <p><strong>Effective Date:</strong> 13/01/2025</p>
 
-        with player.container():
-            c1, c2, c3, c4 = st.columns(4)
+                        <p>At Simmplify, we are committed to protecting your privacy and being transparent about how we collect and use your data. This Privacy Policy outlines the types of data we collect from you when you use our web app and how we use, store, and safeguard that data. By using Simmplify, you agree to the collection and use of information in accordance with this policy.</p>
 
-            c4.markdown("All data provided by:")
-            c4.image("images/Spotify_Full_Logo_RGB_Green.png", width=150)
+                        <div style="color:#1DB954; padding:10px;">
+                            <h3>1. Information We Collect</h3>
+                        </div>
 
-            if st.session_state["is_playing"] == True:
-                if st.session_state["previous_song_name"] != userCurrentSongPlayingDict["name"]:
-                    st.session_state["previous_song_name"] = userCurrentSongPlayingDict["name"]
-                    historicalData = getHistoricalData(userUri, userPlaylists)
-                    summarizedData = getSummarizedData(historicalData)
-                    summarizedListeningData, lengthPostFilter, filteredSummarizedData = filterAndStyleSummarizedData(summarizedData.copy(), selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
-                    historicalDataStyled = format_historical_data(historicalData, selectedPlaylistName)
-                    topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists = summarizedAdvancedStats(summarizedData)
+                        <p>When you use Simmplify, we collect the following data related to your Spotify activity:</p>
+                        <ul>
+                            <li><strong>Songs Listened To:</strong> We track each song you listen to on Spotify, including the song title, artist, and timestamp of when you start listening.</li>
+                            <li><strong>Listening Duration:</strong> We monitor how much of each song you listen to, based on the timestamp of when you start the song and when it ends, or when the song is skipped.</li>
+                            <li><strong>Skip Data:</strong> We identify songs that you skip by polling the Spotify player at regular intervals. If the song title changes on the next polling loop, we calculate the previous song’s skip timestamp and the duration of time you listened to the song before skipping.</li>
+                        </ul>
 
-                c2.markdown(f'SONG: {userCurrentSongPlayingDict["name"]}')
-                c2.markdown(f'Artists: {",".join(userCurrentSongPlayingDict["artists"])}')
-                c2.markdown(f'Album: {userCurrentSongPlayingDict["album.name"]}')
-                
-                # Check if playlistName is not empty
-                playlistName = userPlaylists[userPlaylists["uri"] == userCurrentSongPlayingDict["CurrentPlaylistUri"]]["name"]
-                if not playlistName.empty:
-                    c2.markdown(f'Playlist: {str(playlistName.values[0])}')
-                elif userCurrentSongPlayingDict["CurrentPlaylistUri"] == userName:
-                    c2.markdown('Playlist: Liked Songs')
-                else:
-                    c2.markdown('Playlist: Non-User Playlist')
+                        <div style="color:#1DB954; padding:10px;">
+                            <h3>2. How We Use Your Data</h3>
+                        </div>
 
-                if "album.images" in userCurrentSongPlayingDict and userCurrentSongPlayingDict["album.images"] != "":
-                    c3.image(userCurrentSongPlayingDict["album.images"], width=150)
-                    c2.progress(float(userCurrentSongPlayingDict["SongCurrentPosition"]) / userCurrentSongPlayingDict["duration_ms"])
-                c1.markdown(f"User: {st.session_state['UserName']}")
-            else:
-                c2.markdown("## Paused")
+                        <p>The data we collect is used for the following purposes:</p>
+                        <ul>
+                            <li><strong>Song Tracking:</strong> To track and store the songs you listen to and skip in order to give you insights about your listening habits, including the songs you skip most often.</li>
+                            <li><strong>Personalized Insights:</strong> To generate insights based on your listening history, providing you with details about songs you skip frequently and offering recommendations accordingly.</li>
+                            <li><strong>App Functionality:</strong> The app requires continuous data polling to function properly. Without this data collection, the app cannot deliver the core features, including song tracking and skip analysis.</li>
+                        </ul>
 
-        with simmplify.container():
-            st.dataframe(summarizedListeningData, hide_index=True, use_container_width=True)
+                        <div style="color:#1DB954; padding:10px;">
+                            <h3>3. Data Retention and Deletion</h3>
+                        </div>
 
+                        <p>Your data is retained for as long as you use Simmplify. If you wish to stop using the app, you can delete all of your data by clicking the "Stop Tracking" button:</p>
+                        <ul>
+                            <li><strong>Stop Tracking:</strong> Clicking the "Stop Tracking" button will immediately delete all data associated with your usage of Simmplify, including the songs you’ve listened to, the time you’ve spent listening, and skip data.</li>
+                            <li><strong>Data Usage Continuation:</strong> If you continue using the app, your data will be collected as described above.</li>
+                        </ul>
 
-        with historical.container():
-            st.dataframe(historicalDataStyled, column_order=['Playlist Name', 'Song Name', 'Artist Name', 'Album Name', 'Seconds Listened', 'Seconds Skipped', 'Listening Start Time'], hide_index=True, use_container_width=True)
+                        <div style="color:#1DB954; padding:10px;">
+                            <h3>4. User Control and Rights</h3>
+                        </div>
+
+                        <p>You have control over your data with the following options:</p>
+                        <ul>
+                            <li>You can stop tracking by clicking the "Stop Tracking" button at any time. This will delete all of your stored data.</li>
+                            <li>Please note that once you choose to stop tracking, you will no longer have access to the app's primary features, as the app requires continuous data polling to provide personalized insights.</li>
+                        </ul>
+
+                        <div style="color:#1DB954; padding:10px;">
+                            <h3>5. Data Security</h3>
+                        </div>
+
+                        <p>We prioritize the security of your data and implement standard security protocols to protect it from unauthorized access or disclosure. However, please note that no method of data transmission over the internet is fully secure, and we cannot guarantee absolute security.</p>
+
+                        <div style="color:#1DB954;padding:10px;">
+                            <h3>6. Third-Party Links</h3>
+                        </div>
+
+                        <p>Simmplify may contain links to third-party websites or services that are not operated by us. We have no control over and assume no responsibility for the content, privacy policies, or practices of any third-party sites or services.</p>
+
+                        <div style="color:#1DB954; padding:10px;">
+                            <h3>7. Changes to This Privacy Policy</h3>
+                        </div>
+
+                        <p>We may update our Privacy Policy periodically. When we make changes, we will update the "Effective Date" at the top of this page. We encourage you to review this Privacy Policy periodically for any updates or changes.</p>
+
+                        <div style="color:#1DB954; padding:10px;">
+                            <h3>8. Contact Us</h3>
+                        </div>
+
+                        <p>If you have any questions or concerns regarding this Privacy Policy or our data practices, please contact Noah at simms.noah11@gmail.com</p>
+
+                        <p>By using Simmplify, you acknowledge that you have read and understood this Privacy Policy and agree to its terms.</p>
+                        """, unsafe_allow_html=True)
         
 
-        time.sleep(1)
+        userCurrentSongPlayingDict = {}
+
+        while True:
+            if time.time() - st.session_state.last_active > timeout:
+                st.write("No user interaction detected. Exiting...")
+                break
+        
+            if (datetime.now(pytz.utc) - startTime).total_seconds() % 10 < 1:
+                player_data = spotifyUserCurrentSongPlaying()
+                if player_data is not None and not player_data.empty:
+                    userCurrentSongPlayingDict = player_data.to_dict('records')[0]
+                    if userCurrentSongPlayingDict["CurrentPlaylistUri"] == userName:
+                        userCurrentSongPlayingDict["CurrentPlaylistUri"] = "spotify:user:" + userName + ":collection"
+                    else: userCurrentSongPlayingDict["CurrentPlaylistUri"] = "spotify:playlist:" + userCurrentSongPlayingDict["CurrentPlaylistUri"]
+                else:
+                    userCurrentSongPlayingDict = {
+                        "name": "No song playing",
+                        "artists": [],
+                        "album.name": "",
+                        "duration_ms": 0,
+                        "SongCurrentPosition": 0,
+                        "CurrentPlaylistUri": ""
+                    }
+
+            elif "SongCurrentPosition" not in userCurrentSongPlayingDict:
+                    userCurrentSongPlayingDict = {
+                        "name": "No song playing",
+                        "artists": [],
+                        "album.name": "",
+                        "duration_ms": 0,
+                        "SongCurrentPosition": 0,
+                        "CurrentPlaylistUri": ""
+                    }
+            else:
+                userCurrentSongPlayingDict["SongCurrentPosition"] = min(float(userCurrentSongPlayingDict["duration_ms"]), float(userCurrentSongPlayingDict["SongCurrentPosition"]) + 1000)
+
+
+            with player.container():
+                c1, c2, c3, c4 = st.columns(4)
+
+                c4.markdown("All data provided by:")
+                c4.image("images/Spotify_Full_Logo_RGB_Green.png", width=150)
+
+                if st.session_state["is_playing"] == True:
+                    if st.session_state["previous_song_name"] != userCurrentSongPlayingDict["name"]:
+                        st.session_state["previous_song_name"] = userCurrentSongPlayingDict["name"]
+                        historicalData = getHistoricalData(userUri, userPlaylists)
+                        summarizedData = getSummarizedData(historicalData)
+                        summarizedListeningData, lengthPostFilter, filteredSummarizedData = filterAndStyleSummarizedData(summarizedData.copy(), selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
+                        historicalDataStyled = format_historical_data(historicalData, selectedPlaylistName)
+                        topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists = summarizedAdvancedStats(summarizedData)
+
+                    c2.markdown(f'SONG: {userCurrentSongPlayingDict["name"]}')
+                    c2.markdown(f'Artists: {",".join(userCurrentSongPlayingDict["artists"])}')
+                    c2.markdown(f'Album: {userCurrentSongPlayingDict["album.name"]}')
+                    
+                    # Check if playlistName is not empty
+                    playlistName = userPlaylists[userPlaylists["uri"] == userCurrentSongPlayingDict["CurrentPlaylistUri"]]["name"]
+                    if not playlistName.empty:
+                        c2.markdown(f'Playlist: {str(playlistName.values[0])}')
+                    elif userCurrentSongPlayingDict["CurrentPlaylistUri"] == userName:
+                        c2.markdown('Playlist: Liked Songs')
+                    else:
+                        c2.markdown('Playlist: Non-User Playlist')
+
+                    if "album.images" in userCurrentSongPlayingDict and userCurrentSongPlayingDict["album.images"] != "":
+                        c3.image(userCurrentSongPlayingDict["album.images"], width=150)
+                        c2.progress(float(userCurrentSongPlayingDict["SongCurrentPosition"]) / userCurrentSongPlayingDict["duration_ms"])
+                    c1.markdown(f"User: {st.session_state['UserName']}")
+                else:
+                    c2.markdown("## Paused")
+
+            with simmplify.container():
+                st.dataframe(summarizedListeningData, hide_index=True, use_container_width=True)
+
+
+            with historical.container():
+                st.dataframe(historicalDataStyled, column_order=['Playlist Name', 'Song Name', 'Artist Name', 'Album Name', 'Seconds Listened', 'Seconds Skipped', 'Listening Start Time'], hide_index=True, use_container_width=True)
+            
+
+            time.sleep(1)
+finally:
+    # Ensure all resources are cleaned up
+    grace.close_resources()
 
 
 
