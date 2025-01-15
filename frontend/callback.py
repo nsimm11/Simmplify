@@ -100,7 +100,7 @@ class GracefulSSHTunnel:
                     ssh_pkey=self.temp_key_path,
                     ssh_private_key_password=self.ssh_password,
                     remote_bind_address=(self.db_host, self.db_port),
-                    local_bind_address=('127.0.0.1', 43219)
+                    local_bind_address=('127.0.0.1', 0)
                 )
                 self.tunnel.start()
                 print("SSH Tunnel started.")
