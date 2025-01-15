@@ -881,7 +881,7 @@ try:
     st.session_state["cursor"] = cursor
 
     # Example infinite loop to simulate app behavior
-    timeout = 180  # Timeout in seconds
+    timeout = 600  # Timeout in seconds
 
     query_params = st.query_params  # Use st.query_params directly
     if "username" in query_params:
