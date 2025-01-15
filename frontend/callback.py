@@ -1280,7 +1280,6 @@ try:
 
                 if st.session_state["is_playing"] == True:
                     if st.session_state["previous_song_name"] != userCurrentSongPlayingDict["name"]:
-                        st.session_state.last_active = time.time()
                         st.session_state["previous_song_name"] = userCurrentSongPlayingDict["name"]
                         historicalData = getHistoricalData(userUri, userPlaylists)
                         summarizedData = getSummarizedData(historicalData)
