@@ -103,7 +103,8 @@ class GracefulSSHTunnel:
                     local_bind_address=('127.0.0.1', 0)
                 )
                 self.tunnel.start()
-                print("SSH Tunnel started.")
+                print(f"SSH Tunnel started on dynamic port: {self.tunnel.local_bind_port}")
+
                 return self.tunnel
             except Exception as e:
                 attempts += 1
