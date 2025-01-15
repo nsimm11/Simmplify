@@ -1251,7 +1251,7 @@ try:
                 c1, c2, c3, c4 = st.columns(4)
 
                 c4.markdown("All data provided by:")
-                c4.image("images/Spotify_Full_Logo_RGB_Green.png", width=150)
+                c4.image("frontend/images/Spotify_Full_Logo_RGB_Green.png", width=150)
 
                 if st.session_state["is_playing"] == True:
                     if st.session_state["previous_song_name"] != userCurrentSongPlayingDict["name"]:
