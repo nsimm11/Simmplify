@@ -136,6 +136,7 @@ class GracefulSSHTunnel:
                 time.sleep(4)  # Wait for 2 seconds before retrying
 
         st.warning("Failed to connect to the database after 5 attempts.")
+        self.close_resources(self)
         raise RuntimeError("Failed to connect to the database after 5 attempts.")
 
     def close_resources(self):
