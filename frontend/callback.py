@@ -90,17 +90,28 @@ class GracefulSSHTunnel:
             self.temp_key_path = temp_key_file.name
 
     def start_tunnel(self):
-        self.tunnel = SSHTunnelForwarder(
-            ssh_address_or_host=('ssh.pythonanywhere.com', 22),
-            ssh_username=self.ssh_username,
-            ssh_pkey=self.temp_key_path,
-            ssh_private_key_password=self.ssh_password,
-            remote_bind_address=(self.db_host, self.db_port),
-            local_bind_address=('127.0.0.1', 43219)
-        )
-        self.tunnel.start()
-        print("SSH Tunnel started.")
-        return self.tunnel
+        attempts = 0
+        max_attempts = 5
+        while attempts < max_attempts:
+            try:
+                self.tunnel = SSHTunnelForwarder(
+                    ssh_address_or_host=('ssh.pythonanywhere.com', 22),
+                    ssh_username=self.ssh_username,
+                    ssh_pkey=self.temp_key_path,
+                    ssh_private_key_password=self.ssh_password,
+                    remote_bind_address=(self.db_host, self.db_port),
+                    local_bind_address=('127.0.0.1', 43219)
+                )
+                self.tunnel.start()
+                print("SSH Tunnel started.")
+                return self.tunnel
+            except Exception as e:
+                attempts += 1
+                print(f"Attempt {attempts} failed: {e}")
+                time.sleep(2)  # Wait for 2 seconds before retrying
+
+        st.warning("Failed to start SSH Tunnel after 5 attempts.")
+        raise RuntimeError("Failed to start SSH Tunnel after 5 attempts.")
 
     def connect_to_db(self):
         if not self.tunnel or not self.tunnel.is_active:
