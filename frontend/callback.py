@@ -160,32 +160,6 @@ if 'last_active' not in st.session_state:
 # Update activity timestamp
 st.session_state.last_active = time.time()
 
-if 'grace' not in st.session_state or st.session_state.grace is None:
-    grace = GracefulSSHTunnel(
-        ssh_username=st.secrets["ssh"]["username_ssh"],
-        ssh_password=st.secrets["ssh"].get("private_key_passphrase", None),
-        ssh_private_key=st.secrets["ssh"]["private_key_ssh"],
-        db_user=st.secrets["postgres"]["username_post"],
-        db_password=st.secrets["postgres"]["password_post"],
-        db_name=st.secrets["postgres"]["database_post"],
-        db_host=st.secrets["postgres"]["hostname"],
-        db_port=st.secrets["postgres"]["port"]
-    )
-    st.session_state.grace = grace
-    try:
-        st.session_state.grace.start_tunnel()
-        st.session_state.grace.connect_to_db()
-    except RuntimeError as e:
-        st.session_state.grace.close_resources()
-        st.error(f"Initialization failed: {e}")
-        st.session_state.grace = None
-else:
-    grace = st.session_state.grace
-
-
-
-
-
 
 
 
@@ -881,13 +855,23 @@ def removeUser():
 
     st.rerun()
 
+# Initialize and manage resources locally
 try:
+    grace = GracefulSSHTunnel(
+        ssh_username=st.secrets["ssh"]["username_ssh"],
+        ssh_password=st.secrets["ssh"].get("private_key_passphrase", None),
+        ssh_private_key=st.secrets["ssh"]["private_key_ssh"],
+        db_user=st.secrets["postgres"]["username_post"],
+        db_password=st.secrets["postgres"]["password_post"],
+        db_name=st.secrets["postgres"]["database_post"],
+        db_host=st.secrets["postgres"]["hostname"],
+        db_port=st.secrets["postgres"]["port"]
+    )
     grace.start_tunnel()
     conn = grace.connect_to_db()
-    st.session_state["conn"] = conn
+    cursor = grace.conn.cursor()
 
-    # Example query: Fetching data from the database
-    cursor = conn.cursor()
+    st.session_state["conn"] = conn
     st.session_state["cursor"] = cursor
 
     # Example infinite loop to simulate app behavior
