@@ -103,15 +103,16 @@ class GracefulSSHTunnel:
                     local_bind_address=('127.0.0.1', 0)
                 )
                 self.tunnel.start()
-                print(f"SSH Tunnel started on dynamic port: {self.tunnel.local_bind_port}")
 
+                print(f"SSH Tunnel started on dynamic port: {self.tunnel.local_bind_port}")
                 return self.tunnel
             except Exception as e:
                 attempts += 1
                 print(f"Attempt {attempts} failed: {e}")
-                time.sleep(2)  # Wait for 2 seconds before retrying
+                time.sleep(4)  # Wait for 2 seconds before retrying
 
         st.warning("Failed to start SSH Tunnel after 5 attempts.")
+        self.close_resources(self)
         raise RuntimeError("Failed to start SSH Tunnel after 5 attempts.")
 
     def connect_to_db(self):
@@ -147,6 +148,9 @@ class GracefulSSHTunnel:
         if self.tunnel and self.tunnel.is_active:
             self.tunnel.stop()
             print("SSH Tunnel closed.")
+        if self.temp_key_path and os.path.exists(self.temp_key_path):
+            os.remove(self.temp_key_path)
+            print("Temporary private key file removed.")
 
 
 # Track user activity
@@ -156,22 +160,27 @@ if 'last_active' not in st.session_state:
 # Update activity timestamp
 st.session_state.last_active = time.time()
 
-# Initialize and manage resources
-if 'grace' not in st.session_state or st.session_state.grace == None:
+if 'grace' not in st.session_state or st.session_state.grace is None:
     grace = GracefulSSHTunnel(
-        ssh_username = st.secrets["ssh"]["username_ssh"],
-        ssh_password = st.secrets["ssh"].get("private_key_passphrase", None),
-        ssh_private_key = st.secrets["ssh"]["private_key_ssh"],
-        db_user = st.secrets["postgres"]["username_post"],
-        db_password = st.secrets["postgres"]["password_post"],
-        db_name = st.secrets["postgres"]["database_post"],
-        db_host = st.secrets["postgres"]["hostname"],
-        db_port = st.secrets["postgres"]["port"]
+        ssh_username=st.secrets["ssh"]["username_ssh"],
+        ssh_password=st.secrets["ssh"].get("private_key_passphrase", None),
+        ssh_private_key=st.secrets["ssh"]["private_key_ssh"],
+        db_user=st.secrets["postgres"]["username_post"],
+        db_password=st.secrets["postgres"]["password_post"],
+        db_name=st.secrets["postgres"]["database_post"],
+        db_host=st.secrets["postgres"]["hostname"],
+        db_port=st.secrets["postgres"]["port"]
     )
     st.session_state.grace = grace
-else: grace = st.session_state.grace
-
-
+    try:
+        st.session_state.grace.start_tunnel()
+        st.session_state.grace.connect_to_db()
+    except RuntimeError as e:
+        st.session_state.grace.close_resources()
+        st.error(f"Initialization failed: {e}")
+        st.session_state.grace = None
+else:
+    grace = st.session_state.grace
 
 
 
