@@ -881,7 +881,7 @@ try:
     st.session_state["cursor"] = cursor
 
     # Example infinite loop to simulate app behavior
-    timeout = 600  # Timeout in seconds
+    timeout = 60  # Timeout in seconds
 
     query_params = st.query_params  # Use st.query_params directly
     if "username" in query_params:
@@ -939,12 +939,9 @@ try:
                 unsafe_allow_html=True
             )
         
-        image_path = get_NoahImage()
-
         st.markdown(f"""
             <div style="text-align: center; padding: 10px; border: 2px solid #1DB954; border-radius: 10px; background-color: rgba(255, 255, 255, 0.0);">
                 <h4 style="color: #1DB954; font-size: 1.5em; margin-bottom: 5px;">Creator Info:</h4>
-                <img src="{image_path}" width="80" height="80" style="border-radius: 50%; object-fit: cover; object-position: 40% 50%;">
                 <p style="color: #1DB954; font-size: 1.0em; margin-bottom: 5px;">Noah Simms - Developer and Music Enthusiast</p>
                 <a href="https://www.instagram.com/nsimm22/?hl=en" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">Instagram 🌟</a>
                 <a href="https://github.com/nsimm11" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">GitHub 💻</a>
@@ -1241,6 +1238,8 @@ try:
         while True:
             if time.time() - st.session_state.last_active > timeout:
                 st.write("No user interaction detected. Exiting...")
+                with player.container():
+                    st.button("Session Timed Out: Refresh")
                 break
         
             if (datetime.now(pytz.utc) - startTime).total_seconds() % 10 < 1:
