@@ -59,8 +59,8 @@ if 'server' not in st.session_state:
     st.session_state['server'] = None
 if 'last_active' not in st.session_state:
     st.session_state.last_active = time.time()
-
-
+if 'grace' not in st.session_state:
+    st.session_state.grace = None
 
 # Scopes required for accessing user's currently playing track
 SCOPE = "user-read-playback-state user-read-currently-playing user-read-recently-played playlist-modify-private playlist-modify-public"
@@ -155,16 +155,19 @@ if 'last_active' not in st.session_state:
 st.session_state.last_active = time.time()
 
 # Initialize and manage resources
-grace = GracefulSSHTunnel(
-    ssh_username = st.secrets["ssh"]["username_ssh"],
-    ssh_password = st.secrets["ssh"].get("private_key_passphrase", None),
-    ssh_private_key = st.secrets["ssh"]["private_key_ssh"],
-    db_user = st.secrets["postgres"]["username_post"],
-    db_password = st.secrets["postgres"]["password_post"],
-    db_name = st.secrets["postgres"]["database_post"],
-    db_host = st.secrets["postgres"]["hostname"],
-    db_port = st.secrets["postgres"]["port"]
-)
+if 'grace' not in st.session_state or st.session_state.grace == None:
+    grace = GracefulSSHTunnel(
+        ssh_username = st.secrets["ssh"]["username_ssh"],
+        ssh_password = st.secrets["ssh"].get("private_key_passphrase", None),
+        ssh_private_key = st.secrets["ssh"]["private_key_ssh"],
+        db_user = st.secrets["postgres"]["username_post"],
+        db_password = st.secrets["postgres"]["password_post"],
+        db_name = st.secrets["postgres"]["database_post"],
+        db_host = st.secrets["postgres"]["hostname"],
+        db_port = st.secrets["postgres"]["port"]
+    )
+    st.session_state.grace = grace
+else: grace = st.session_state.grace
 
 
 
