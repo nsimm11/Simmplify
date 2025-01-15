@@ -447,6 +447,7 @@ def spotifyUsersPlaylists(username, userPlaylists, offset=0, limit=50):
     if len(requestsAsJsonPlaylists["items"]) == 0:
         print("Request Empty - No Playlists")
         errorLog("Request Empty - No Playlists")
+        userPlaylists = pd.concat([userPlaylists, pd.DataFrame.from_dict({"uri": [f"spotify:user:{username}:collection"], "name": ["Liked Songs"], "owner.display_name": [username], "owner.id": [username]})])
         return userPlaylists
 
     else:
