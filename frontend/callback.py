@@ -954,7 +954,7 @@ try:
         #After authentication, display the player and simmplify page
         st.markdown("""
             <div style="text-align: center; margin-top: 10px;">
-                <a href="simmplify.streamlit.app"=><h1 style="color: #1DB954; font-size: 4em; margin-bottom: 10px;">SIMMPLIFY</h1></a>
+                <a href="simmplify.streamlit.app: style="color: #1DB954; font-size: 4em; text-decoration: none; margin-bottom: 10px;">SIMMPLIFY</a>
                 <p style="font-size: 1.5em; color: #FFFFFF;">Track your habits and declutter your playlists to enjoy your favourite songs, more often!</p>
                 <hr style="border: 1px solid #1DB954; width: 100%; margin: 20px auto;" />
             </div>
