@@ -43,8 +43,8 @@ if 'UserUri' not in st.session_state:
     st.session_state['UserUri'] = ''
 if 'SelectedPlaylist' not in st.session_state:
     st.session_state['SelectedPlaylist'] = ''
-if 'historicalDataDisplay' not in st.session_state:
-    st.session_state['historicalDataDisplay'] = pd.DataFrame()
+if 'historicalData' not in st.session_state:
+    st.session_state['historicalData'] = pd.DataFrame()
 if 'is_playing' not in st.session_state:
     st.session_state['is_playing'] = False
 if 'UserDbId' not in st.session_state:
@@ -465,6 +465,19 @@ def spotifyUsersPlaylists(username, userPlaylists, offset=0, limit=50):
 
 def getHistoricalData(userUri, userPlaylists):
 
+    if not st.session_state["historicalData"].empty:
+        mostRecentDp = max(st.session_state["historicalData"]["listeningstarttime"])
+        
+        # Convert mostRecentDp to UTC if it's not already in UTC
+        if mostRecentDp.tzinfo is not None:  # Check if the timestamp has timezone info
+            mostRecentDp = mostRecentDp.astimezone(pytz.utc)  # Convert to UTC
+        else:
+            mostRecentDp = mostRecentDp.replace(tzinfo=pytz.utc)  # Assume it's in local time and set to UTC
+
+        mostRecentQuery = f" AND listeningstarttime > '{mostRecentDp}'"
+    else:
+        mostRecentQuery = ""
+
     # Join with SONGDATA table to get song details
     historicalDataQuery = """
     SELECT 
@@ -480,21 +493,31 @@ def getHistoricalData(userUri, userPlaylists):
         CAST(ld.listeningstarttime AS TIMESTAMPTZ) AS listeningstarttime
     FROM LISTENERDATA ld
     JOIN SONGDATA si ON ld.songuri = si.songuri
-    WHERE ld.useruri = %s
-    ORDER BY ld.listeningstarttime DESC
-    """
-    historicalData = getQuery(historicalDataQuery, [userUri])
+    WHERE ld.useruri = %s"""
+    
+    orderByStatement = "ORDER BY ld.listeningstarttime DESC"
+    historicalData = getQuery(historicalDataQuery + mostRecentQuery + orderByStatement, [userUri])
 
     # Convert listeningStartTime to user's local timezone and round to nearest second
     user_timezone = pytz.timezone('America/New_York')  # Replace with the user's actual timezone
-    historicalData['listeningstarttime'] = historicalData['listeningstarttime'].apply(
-        lambda x: x.replace(tzinfo=pytz.utc).astimezone(user_timezone).replace(microsecond=0)
-    )
+    historicalData['listeningstarttime'] = historicalData['listeningstarttime'].apply(lambda x: x.replace(tzinfo=pytz.utc).astimezone(user_timezone).replace(microsecond=0))
 
+    # Combine new historical data with existing data
+    st.session_state["historicalData"] = pd.concat([historicalData, st.session_state["historicalData"]])
+
+    # Drop duplicates based on 'songuri' and 'listeningstarttime' after timezone conversion
+    st.session_state["historicalData"] = st.session_state["historicalData"].drop_duplicates(subset=['songuri', 'listeningstarttime'])
+
+    # Reset the index to avoid duplicate index issues
+    st.session_state["historicalData"].reset_index(drop=True, inplace=True)  # Reset index
+
+    historicalDataReturn = st.session_state["historicalData"].copy()
+
+    # Map playlist names
     playlist_map = userPlaylists.set_index('uri')['name'].to_dict()
-    historicalData['Playlist Name'] = historicalData['playlisturi'].map(playlist_map).fillna("Non-User Playlist")
+    historicalDataReturn['Playlist Name'] = historicalDataReturn['playlisturi'].map(playlist_map).fillna("Non-User Playlist")
 
-    return historicalData
+    return historicalDataReturn
 
 def highlight_historical_data_row(row):
     listened_percentage = row['Percentage Listened']
@@ -505,7 +528,7 @@ def highlight_historical_data_row(row):
         for _ in row
     ]
 
-def format_historical_data(df, playlist_name):
+def format_historical_data(df):
     # Limit to the last 150 rows since the data will become too large to display
 
     df = df.sort_values(by='listeningstarttime', ascending=False)
@@ -524,6 +547,7 @@ def format_historical_data(df, playlist_name):
         'listeningstarttime': 'Listening Start Time'
     })
 
+
     # Drop the playlistUri and songUri columns
     df = df.drop(columns=['playlisturi', 'songuri'], errors='ignore')
     df = df.sort_values(by='Listening Start Time', ascending=False)
@@ -532,7 +556,6 @@ def format_historical_data(df, playlist_name):
     columns_order = ['Playlist Name', 'Song Name', 'Artist Name', 'Album Name', 'Seconds Listened', 'Seconds Skipped', 'Percentage Listened', 'Percentage Skipped', 'Listening Start Time']
     df = df[columns_order]
 
-    # Apply gradient formatting to all columns based on the 'Percentage Listened'
     styled_df = df.style.apply(highlight_historical_data_row, axis=1)
 
     return styled_df
@@ -992,7 +1015,9 @@ else:
 
         # Display historical data for all playlists
         historicalData = getHistoricalData(userUri, userPlaylists)
+        historicalDataStyled = format_historical_data(historicalData)    
         summarizedData = getSummarizedData(historicalData)
+
 
         # Add the "Liked Songs" playlist to the DataFrame
         liked_songs = pd.DataFrame({'uri': [f'spotify:user:{userName}:collection'], 'name': ['Liked Songs'], 'owner.display_name': [userName], 'owner.id': [userId]})
@@ -1022,8 +1047,6 @@ else:
 
         summarizedListeningData, lengthPostFilter, filteredSummarizedData = filterAndStyleSummarizedData(summarizedData.copy(), selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
         topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists = summarizedAdvancedStats(summarizedData)
-
-        historicalDataStyled = format_historical_data(historicalData, selectedPlaylistName)    
 
         simmplify = st.empty()
 
@@ -1167,7 +1190,7 @@ else:
                         <ul>
                             <li><strong>Songs Listened To:</strong> We track each song you listen to on Spotify, including the song title, artist, and timestamp of when you start listening.</li>
                             <li><strong>Listening Duration:</strong> We monitor how much of each song you listen to, based on the timestamp of when you start the song and when it ends, or when the song is skipped.</li>
-                            <li><strong>Skip Data:</strong> We identify songs that you skip by polling the Spotify player at regular intervals. If the song title changes on the next polling loop, we calculate the previous song’s skip timestamp and the duration of time you listened to the song before skipping.</li>
+                            <li><strong>Skip Data:</strong> We identify songs that you skip by polling the Spotify player at regular intervals. If the song title changes on the next polling loop, we calculate the previous song's skip timestamp and the duration of time you listened to the song before skipping.</li>
                         </ul>
 
                         <div style="color:#1DB954; padding:10px;">
@@ -1187,7 +1210,7 @@ else:
 
                         <p>Your data is retained for as long as you use Simmplify. If you wish to stop using the app, you can delete all of your data by clicking the "Stop Tracking" button:</p>
                         <ul>
-                            <li><strong>Stop Tracking:</strong> Clicking the "Stop Tracking" button will immediately delete all data associated with your usage of Simmplify, including the songs you’ve listened to, the time you’ve spent listening, and skip data.</li>
+                            <li><strong>Stop Tracking:</strong> Clicking the "Stop Tracking" button will immediately delete all data associated with your usage of Simmplify, including the songs you've listened to, the time you've spent listening, and skip data.</li>
                             <li><strong>Data Usage Continuation:</strong> If you continue using the app, your data will be collected as described above.</li>
                         </ul>
 
@@ -1278,9 +1301,9 @@ else:
                     if st.session_state["previous_song_name"] != userCurrentSongPlayingDict["name"]:
                         st.session_state["previous_song_name"] = userCurrentSongPlayingDict["name"]
                         historicalData = getHistoricalData(userUri, userPlaylists)
+                        historicalDataStyled = format_historical_data(historicalData)
                         summarizedData = getSummarizedData(historicalData)
                         summarizedListeningData, lengthPostFilter, filteredSummarizedData = filterAndStyleSummarizedData(summarizedData.copy(), selectedPlaylistUri, userPlaylists, playMin, scoreMin, scoreMax)
-                        historicalDataStyled = format_historical_data(historicalData, selectedPlaylistName)
                         topArtists, topSongs, bottomArtists, bottomSongs, bottomPlaylists, topPlaylists = summarizedAdvancedStats(summarizedData)
 
                     c2.markdown(f'SONG: {userCurrentSongPlayingDict["name"]}')

@@ -4,6 +4,7 @@ __pycache__
 error.txt
 
 databaseSetup.py
+databaseCorrections.ipynb
 
 frontend/.streamlit/secrets.toml
 *ssh*
