@@ -235,7 +235,7 @@ def getSpotifyHistoricalData(userUri, historicalData, access_token):
         return pd.DataFrame(columns=['playlisturi', 'songuri', 'listenedpercentage', 'skippedpercentage', 'listeningstarttime'])
 
     all_songs = []
-    liked_songs_uri = f'spotify:user:{userUri}:collection'  # Define the Liked Songs URI
+    liked_songs_uri = f'{userUri}:collection'  # Define the Liked Songs URI
 
     while True:
         # Fetch historical data from Spotify since the most recent listeningStartTime

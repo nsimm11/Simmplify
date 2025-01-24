@@ -856,96 +856,97 @@ def removeUser():
 
     st.rerun()
 
-# Initialize and manage resources locally
-try:
-    grace = GracefulSSHTunnel(
-        ssh_username=st.secrets["ssh"]["username_ssh"],
-        ssh_password=st.secrets["ssh"].get("private_key_passphrase", None),
-        ssh_private_key=st.secrets["ssh"]["private_key_ssh"],
-        db_user=st.secrets["postgres"]["username_post"],
-        db_password=st.secrets["postgres"]["password_post"],
-        db_name=st.secrets["postgres"]["database_post"],
-        db_host=st.secrets["postgres"]["hostname"],
-        db_port=st.secrets["postgres"]["port"]
-    )
-    grace.start_tunnel()
-    conn = grace.connect_to_db()
-    cursor = grace.conn.cursor()
 
-    st.session_state["conn"] = conn
-    st.session_state["cursor"] = cursor
 
-    # Example infinite loop to simulate app behavior
-    timeout = 60  # Timeout in seconds
+query_params = st.query_params  # Use st.query_params directly
+if "username" in query_params:
+    query_params_user = query_params.get("username")
+else:
+    query_params_user = None
+code = query_params.get("code")  # Get the code directly
 
-    query_params = st.query_params  # Use st.query_params directly
-    if "username" in query_params:
-        query_params_user = query_params.get("username")
-    else:
-        query_params_user = None
-    code = query_params.get("code")  # Get the code directly
-
-    if code == None and st.session_state['auth_code'] == None and query_params_user == None:
-        st.markdown(
-            
-                """
-                <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
-                <h1 style="font-size: 4rem; margin: 0; color: #1DB954;">SIMMPLIFY</h1>
-                <p style="font-size: 1.5rem;">Track your habits and declutter your playlists to enjoy your favourite songs, more often!</p>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-        # Step 1: Get the authentication URL
-        auth_url = sp_oauth.get_authorize_url()
-
-        st.markdown(f"""
-                <div style="display: flex; justify-content: center;">
-                    <a href="{auth_url}">
-                        <button class="button" style="background-color: #1DB954; text-align: center; color: #FFFFFF; border: none; padding: 15px 30px; font-size: 1rem; border-radius: 25px; cursor: pointer;">
-                            Authenticate with Spotify
-                        </button>
-                    </a>
-                </div>
-            """, unsafe_allow_html=True)
+if code == None and st.session_state['auth_code'] == None and query_params_user == None:
+    st.markdown(
         
-        st.markdown(
-                """
-                <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
-                <hr style="border: 1px solid #1DB954; width: 100%; margin: 20px auto;" />
+            """
+            <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
+            <h1 style="font-size: 4rem; margin: 0; color: #1DB954;">SIMMPLIFY</h1>
+            <p style="font-size: 1.5rem;">Track your habits and declutter your playlists to enjoy your favourite songs, more often!</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-                <div style="margin-top: 20px;">
-                    <h2 style="color: #1DB954;">How It Works</h2>
-                    <p style="line-height: 1.6;">
-                    Tired of songs that don't hit the right vibe anymore? SIMMPLIFY tracks how often you skip songs on your playlists and helps you decide which tracks to keep or remove. Just log in with your Spotify account, let SIMMPLIFY do its magic, and enjoy a finely-tuned playlist that's perfect for you!
-                    </p>
-                </div>
-                <div style="margin-top: 20px;">
-                    <h2 style="color: #1DB954;">How To Use</h2>
-                    <p>Connect your Spotify account with the Button Above and listen like normal.</p>
-                    <p>Check back here in a week or two to see your suggested playlist updates!</p>
-                    <p>The Simmplify Data Section will calculate and sort your playlist songs by how often they are skipped.</p>
-                    <p>Use the buttons to automatically remove songs based on preference score.</p>
-                    <p>The Historical Data Section will show you a list of every song you have listened to and listening percentage.</p>
+    # Step 1: Get the authentication URL
+    auth_url = sp_oauth.get_authorize_url()
 
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-        
-        st.markdown(f"""
-            <div style="text-align: center; padding: 10px; border: 2px solid #1DB954; border-radius: 10px; background-color: rgba(255, 255, 255, 0.0);">
-                <h4 style="color: #1DB954; font-size: 1.5em; margin-bottom: 5px;">Creator Info:</h4>
-                <p style="color: #1DB954; font-size: 1.0em; margin-bottom: 5px;">Noah Simms - Developer and Music Enthusiast</p>
-                <a href="https://www.instagram.com/nsimm22/?hl=en" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">Instagram 🌟</a>
-                <a href="https://github.com/nsimm11" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">GitHub 💻</a>
-                <a href="https://ca.linkedin.com/in/noah-simms-360724162" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">LinkedIn 💼</a>
+    st.markdown(f"""
+            <div style="display: flex; justify-content: center;">
+                <a href="{auth_url}">
+                    <button class="button" style="background-color: #1DB954; text-align: center; color: #FFFFFF; border: none; padding: 15px 30px; font-size: 1rem; border-radius: 25px; cursor: pointer;">
+                        Authenticate with Spotify
+                    </button>
+                </a>
             </div>
         """, unsafe_allow_html=True)
 
+    st.markdown(
+            """
+            <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
+            <hr style="border: 1px solid #1DB954; width: 100%; margin: 20px auto;" />
 
-    else:
+            <div style="margin-top: 20px;">
+                <h2 style="color: #1DB954;">How It Works</h2>
+                <p style="line-height: 1.6;">
+                Tired of songs that don't hit the right vibe anymore? SIMMPLIFY tracks how often you skip songs on your playlists and helps you decide which tracks to keep or remove. Just log in with your Spotify account, let SIMMPLIFY do its magic, and enjoy a finely-tuned playlist that's perfect for you!
+                </p>
+            </div>
+            <div style="margin-top: 20px;">
+                <h2 style="color: #1DB954;">How To Use</h2>
+                <p>Connect your Spotify account with the Button Above and listen like normal.</p>
+                <p>Check back here in a week or two to see your suggested playlist updates!</p>
+                <p>The Simmplify Data Section will calculate and sort your playlist songs by how often they are skipped.</p>
+                <p>Use the buttons to automatically remove songs based on preference score.</p>
+                <p>The Historical Data Section will show you a list of every song you have listened to and listening percentage.</p>
+
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    st.markdown(f"""
+        <div style="text-align: center; padding: 10px; border: 2px solid #1DB954; border-radius: 10px; background-color: rgba(255, 255, 255, 0.0);">
+            <h4 style="color: #1DB954; font-size: 1.5em; margin-bottom: 5px;">Creator Info:</h4>
+            <p style="color: #1DB954; font-size: 1.0em; margin-bottom: 5px;">Noah Simms - Developer and Music Enthusiast</p>
+            <a href="https://www.instagram.com/nsimm22/?hl=en" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">Instagram 🌟</a>
+            <a href="https://github.com/nsimm11" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">GitHub 💻</a>
+            <a href="https://ca.linkedin.com/in/noah-simms-360724162" style="color: #1DB954; text-decoration: none; margin: 0 5px; font-weight: bold; transition: color 0.3s;">LinkedIn 💼</a>
+        </div>
+    """, unsafe_allow_html=True)
+
+else:
+    # Initialize and manage resources locally
+    try:
+        grace = GracefulSSHTunnel(
+            ssh_username=st.secrets["ssh"]["username_ssh"],
+            ssh_password=st.secrets["ssh"].get("private_key_passphrase", None),
+            ssh_private_key=st.secrets["ssh"]["private_key_ssh"],
+            db_user=st.secrets["postgres"]["username_post"],
+            db_password=st.secrets["postgres"]["password_post"],
+            db_name=st.secrets["postgres"]["database_post"],
+            db_host=st.secrets["postgres"]["hostname"],
+            db_port=st.secrets["postgres"]["port"]
+        )
+        grace.start_tunnel()
+        conn = grace.connect_to_db()
+        cursor = grace.conn.cursor()
+
+        st.session_state["conn"] = conn
+        st.session_state["cursor"] = cursor
+
+        # Example infinite loop to simulate app behavior
+        timeout = 60  # Timeout in seconds
+            
         #After authentication, display the player and simmplify page
         st.markdown("""
             <div style="text-align: center; margin-top: 10px;">
@@ -1311,10 +1312,14 @@ try:
             
 
             time.sleep(1)
-finally:
-    # Ensure all resources are cleaned up
-    grace.close_resources()
-    st.session_state.grace = None
+            
+    except Exception as e:
+        st.write("Database Connection error occurred: ", e)
+    
+    finally:
+        # Ensure all resources are cleaned up
+        grace.close_resources()
+        st.session_state.grace = None
 
 
 
