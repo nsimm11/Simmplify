@@ -175,7 +175,7 @@ def hide_streamlit_style():
     """
     st.markdown(hide_style, unsafe_allow_html=True)
 
-hide_streamlit_style()
+#hide_streamlit_style()
 
 
 def errorLog(errorMessage):
@@ -649,9 +649,9 @@ def summarizedAdvancedStats(summarizedData):
     # Apply the function to the 'songuri' column
     summarizedData['songuri'] = summarizedData['songuri'].apply(remove_spotify_track_prefix)
 
-    bottomArtists = summarizedDataForArtists.groupby('Artist Name').agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=True).head(5)
+    bottomArtists = summarizedDataForArtists.groupby('Artist Name').agg({'Skipped Total': 'sum'}).reset_index().sort_values(by='Skipped Total', ascending=False).head(5)
     
-    bottomSongs = summarizedData.groupby(['Song Name', 'Artist Name']).agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=True).head(5)
+    bottomSongs = summarizedData.groupby(['Song Name', 'Artist Name']).agg({'Skipped Total': 'sum'}).reset_index().sort_values(by='Skipped Total', ascending=False).head(5)
     
     topSongs = summarizedData.groupby(['Song Name', 'Artist Name']).agg({'Preference Score': 'sum'}).reset_index().sort_values(by='Preference Score', ascending=False).head(5)
     
@@ -789,10 +789,14 @@ def display_stats(column, title, statType, display_percentage):
                         }
                 </style>""", unsafe_allow_html=True)
     st.markdown(f"<h4 style='color: #1DB954; text-align: center;'>{title}</h4>", unsafe_allow_html=True)
-    if statType == "Artist" or statType == "Song":
+    if (statType == "Artist" or statType == "Song") and "Skipped" not in title:
         st.markdown(f"""<div style='color: #FFFFFF; text-align: center; padding: 10px;'>
                 <strong>Metric: Total Score</strong>
             </div>""", unsafe_allow_html=True)
+    elif "Skipped" in title and (statType == "Artist" or statType == "Song"):
+        st.markdown(f"""<div style='color: #FFFFFF; text-align: center; padding: 10px;'>
+                        <strong>Metric: Total Percent Skipped</strong>
+                    </div>""", unsafe_allow_html=True)
     else:
         st.markdown(f"""<div style='color: #FFFFFF; text-align: center; padding: 10px;'>
                         <strong>Metric: Average Percent Listened</strong>
@@ -816,7 +820,7 @@ def display_stats(column, title, statType, display_percentage):
                     <img src="{get_artist_image_url(item['Artist Name']) if statType == 'Artist' else get_album_cover_url(item['Song Name']) if statType == 'Song' else get_playlist_image_url(item.playlisturi)}" width="80" height="80" style="border-radius: 4px; object-fit: cover; object-position: 50% 50%; padding: 5px;">
                 </div>
                 <div style="flex: 1; text-align: center;">
-                    <p> {item['Preference Score'] if statType == "Artist" or statType == "Song" else np.round(item['Preference Rate'],2)}%</p>
+                    <p> {np.round(item["Metric"],2)}%</p>
                 </div>
             </div>
             """
@@ -968,7 +972,7 @@ else:
         st.session_state["cursor"] = cursor
 
         # Example infinite loop to simulate app behavior
-        timeout = 60  # Timeout in seconds
+        timeout = 400  # Timeout in seconds
             
         #After authentication, display the player and simmplify page
         st.markdown("""
@@ -1120,15 +1124,15 @@ else:
 
             # Display Most Listened to Artists
             with as1:
-                display_stats(topArtists, "Most Played Artists", "Artist", display_percentage='listened')
+                display_stats(topArtists.rename({"Preference Score":"Metric"}, axis=1), "Most Played Artists", "Artist", display_percentage='listened')
 
             # Display Most Listened to Songs
             with as2:
-                display_stats(topSongs, "Most Played Songs", "Song", display_percentage='listened')
+                display_stats(topSongs.rename({"Preference Score":"Metric"}, axis=1), "Most Played Songs", "Song", display_percentage='listened')
 
             # Display Most Skipped Artists
             with as3:
-                display_stats(topPlaylists, "Most Played Playlists", "Playlist", display_percentage='listened')
+                display_stats(topPlaylists.rename({"Preference Rate":"Metric"}, axis=1), "Most Played Playlists", "Playlist", display_percentage='listened')
 
         with biggestMisses.container():
             # Clear previous columns
@@ -1136,15 +1140,15 @@ else:
 
             # Display Most Skipped Artists
             with bm1:
-                display_stats(bottomArtists, "Most Skipped Artists", "Artist", display_percentage='skipped')
+                display_stats(bottomArtists.rename({"Skipped Total":"Metric"}, axis=1), "Most Skipped Artists", "Artist", display_percentage='skipped')
 
             # Display Most Skipped Songs
             with bm2:
-                display_stats(bottomSongs, "Most Skipped Songs", "Song", display_percentage='skipped')
+                display_stats(bottomSongs.rename({"Skipped Total":"Metric"}, axis=1), "Most Skipped Songs", "Song", display_percentage='skipped')
 
             # Display Most Skipped Playlists
             with bm3:   
-                display_stats(bottomPlaylists, "Most Skipped Playlists", "Playlist", display_percentage='skipped')
+                display_stats(bottomPlaylists.rename({"Preference Rate":"Metric"}, axis=1), "Most Skipped Playlists", "Playlist", display_percentage='skipped')
 
         st.markdown(""" 
             <div style="text-align: center" padding: 10px;>
@@ -1300,6 +1304,7 @@ else:
                 if st.session_state["is_playing"] == True:
                     if st.session_state["previous_song_name"] != userCurrentSongPlayingDict["name"]:
                         st.session_state["previous_song_name"] = userCurrentSongPlayingDict["name"]
+                        st.session_state.last_active = time.time()
                         historicalData = getHistoricalData(userUri, userPlaylists)
                         historicalDataStyled = format_historical_data(historicalData)
                         summarizedData = getSummarizedData(historicalData)
